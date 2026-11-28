@@ -132,7 +132,16 @@ before `ContentView.switchPlace` retires the old page on iPad and iPhone
 for Settings › Kernels or remote server changes, and backgrounding the
 iPad or iPhone scene saves the open notebook inside a background task
 while `WebViewCoordinator` marks terminated WebKit processes not-ready
-until reloaded.
+until reloaded. While a notebook has unsaved edits, `local-recovery.ts`
+keeps a debounced snapshot in per-origin IndexedDB (`ganymede-ui:local-recovery`,
+keyed by backend scope and notebook path, capped at 10 MiB per notebook
+and 50 MiB total with oldest-first eviction, and flushed immediately on
+failed save, offline edits, `visibilitychange` to hidden, and `pagehide`).
+Snapshots clear automatically when a save succeeds or edits are
+discarded; on reopen after a failed save, offline reload, or WebKit
+content-process termination, `NotebookPane` offers the copy in a
+non-blocking `RecoveryBanner` and `RecoverySheet` alongside any distinct
+server recovery copies.
 
 Switching backends disposes the old `ServiceManager`, once the last
 saves of the panes that closed on it (`pendingHandoffs` in

@@ -16,6 +16,11 @@ import {
   savePosition,
 } from './lib/journal';
 import { recentsKey } from './lib/recents';
+import {
+  createMemoryLocalRecoveryStore,
+  getLocalRecoveryStore,
+  setLocalRecoveryStoreForTests,
+} from './lib/local-recovery';
 import { loadConsoles, saveConsole } from './lib/console-recents';
 import { handOff } from './lib/rename';
 import { SERVER_TIMEOUT_MS } from './lib/server-request';
@@ -3158,5 +3163,42 @@ describe('closing a notebook with unsaved edits (#808)', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Switch Without Saving' }));
     expect(await screen.findByTestId('duck-console')).toHaveAttribute('data-folder', 'work');
     expect(discard).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves and removes local recovery copies when notebooks are renamed or deleted', async () => {
+    const store = createMemoryLocalRecoveryStore();
+    setLocalRecoveryStoreForTests(store);
+    const scope = recentsKey({ kind: 'ganymede', url: '', token: '' });
+    await store.save({
+      scope,
+      path: 'work/Orbits.ipynb',
+      content: {
+        nbformat: 4,
+        nbformat_minor: 5,
+        metadata: {},
+        cells: [
+          { cell_type: 'code', source: 'x = 1', metadata: {}, execution_count: null, outputs: [] },
+        ],
+      },
+      reason: 'unsaved_edits',
+    });
+
+    await openOnServer({ dirty: false, save: vi.fn(async () => true), discard: vi.fn() });
+    act(() => mocks.onRenamed?.('work/Orbits.ipynb', 'work/Renamed.ipynb'));
+    await waitFor(async () => {
+      expect(await getLocalRecoveryStore().get(scope, 'work/Orbits.ipynb')).toBeUndefined();
+      expect(await getLocalRecoveryStore().get(scope, 'work/Renamed.ipynb')).toBeDefined();
+    });
+
+    // Simulate file deletion from the native app (`file-moved` with `to: null`).
+    expect(
+      await window.ganymede!.command(
+        'file-moved',
+        JSON.stringify({ from: 'work/Renamed.ipynb', to: null }),
+      ),
+    ).toBe(true);
+    await waitFor(async () => {
+      expect(await getLocalRecoveryStore().get(scope, 'work/Renamed.ipynb')).toBeUndefined();
+    });
   });
 });

@@ -18,6 +18,13 @@ import { attachCellControls } from '../lib/cell-controls';
 import type { BackendConfig } from '../lib/backends';
 import type { KernelPlaces } from '../lib/kernel-place';
 import { forgetChosenViews, forgetPositions } from '../lib/journal';
+import {
+  LOCAL_RECOVERY_DEBOUNCE_MS,
+  createMemoryLocalRecoveryStore,
+  getLocalRecoveryStore,
+  setLocalRecoveryStoreForTests,
+} from '../lib/local-recovery';
+import { recentsKey } from '../lib/recents';
 
 // No kernel and no real notebook widget: the pane's loading, dirty state and
 // saving are tested here with JupyterLab's real NotebookModel. Rendering,
@@ -3986,5 +3993,269 @@ describe('NotebookPane room reconnecting read-only (#702)', () => {
     act(() => setLive(true));
     await waitFor(() => expect(document.querySelector('.machine-banner')).not.toBeInTheDocument());
     expect(model.readOnly).toBe(false);
+  });
+});
+
+describe('local recovery copy (#808)', () => {
+  beforeEach(() => {
+    setLocalRecoveryStoreForTests(createMemoryLocalRecoveryStore());
+  });
+
+  it('debounces snapshots while dirty and clears automatically when save succeeds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { latest } = setup();
+      await waitFor(() => expect(latest()?.path).toBe('moons/Io.ipynb'));
+      const scope = recentsKey({ kind: 'ganymede', url: '', token: '' });
+
+      act(() => modelOf().cells.get(0).sharedModel.setSource('print("draft 1")'));
+      // Not written yet before debounce window elapses.
+      expect(await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb')).toBeUndefined();
+
+      await act(() => vi.advanceTimersByTimeAsync(LOCAL_RECOVERY_DEBOUNCE_MS + 50));
+      const snap1 = await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb');
+      expect(snap1?.content.cells[0]?.source).toBe('print("draft 1")');
+
+      // Latest copy wins on subsequent edit.
+      act(() => modelOf().cells.get(0).sharedModel.setSource('print("draft 2")'));
+      await act(() => vi.advanceTimersByTimeAsync(LOCAL_RECOVERY_DEBOUNCE_MS + 50));
+      const snap2 = await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb');
+      expect(snap2?.content.cells[0]?.source).toBe('print("draft 2")');
+
+      // Saving successfully clears the local copy automatically.
+      await act(() => latest()!.save());
+      await waitFor(async () => {
+        expect(await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb')).toBeUndefined();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('snapshots immediately on failed save, visibilitychange hidden, pagehide, and offline edits', async () => {
+    const { fake, latest } = setup();
+    await waitFor(() => expect(latest()?.path).toBe('moons/Io.ipynb'));
+    const scope = recentsKey({ kind: 'ganymede', url: '', token: '' });
+
+    // Failed save captures immediately with save_failed reason & error detail.
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print("failed-save")'));
+    fake.contents.save.mockRejectedValueOnce(new Error('Disk full'));
+    await act(() => latest()!.save());
+    const failedSnap = await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb');
+    expect(failedSnap?.reason).toBe('save_failed');
+    expect(failedSnap?.detail).toContain('Disk full');
+    expect(failedSnap?.content.cells[0]?.source).toBe('print("failed-save")');
+
+    // visibilitychange -> hidden captures immediately.
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print("hidden-tab")'));
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    const hiddenSnap = await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb');
+    expect(hiddenSnap?.content.cells[0]?.source).toBe('print("hidden-tab")');
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+
+    // pagehide captures immediately.
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print("page-hide")'));
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    const pageHideSnap = await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb');
+    expect(pageHideSnap?.content.cells[0]?.source).toBe('print("page-hide")');
+
+    // Offline event captures immediately with reason 'offline'.
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print("offline-edit")'));
+    act(() => {
+      window.dispatchEvent(new Event('offline'));
+    });
+    const offlineSnap = await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb');
+    expect(offlineSnap?.reason).toBe('offline');
+    expect(offlineSnap?.content.cells[0]?.source).toBe('print("offline-edit")');
+  });
+
+  it('clears the local copy on discard() and re-captures on undo() if still dirty', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()?.path).toBe('moons/Io.ipynb'));
+    const scope = recentsKey({ kind: 'ganymede', url: '', token: '' });
+
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print("to-discard")'));
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    expect(await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb')).toBeDefined();
+
+    let undo!: () => void;
+    act(() => {
+      undo = latest()!.discard();
+    });
+    expect(await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb')).toBeUndefined();
+
+    act(() => undo());
+    const restored = await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb');
+    expect(restored?.content.cells[0]?.source).toBe('print("to-discard")');
+  });
+
+  it('offers the non-blocking banner on reopen, shows diff, restores over notebook, and clears copy', async () => {
+    const user = userEvent.setup();
+    const scope = recentsKey({ kind: 'ganymede', url: '', token: '' });
+    const recovered = structuredClone(NOTEBOOK);
+    recovered.cells[0]!.source = 'print("recovered after reload")';
+    await getLocalRecoveryStore().save({
+      scope,
+      path: 'moons/Io.ipynb',
+      content: recovered,
+      reason: 'save_failed',
+      detail: 'Network offline',
+    });
+
+    const { fake, latest } = setup();
+    await waitFor(() => expect(latest()?.path).toBe('moons/Io.ipynb'));
+
+    expect(await screen.findByText('Local unsaved copy')).toBeVisible();
+    expect(screen.getByText(/Network offline · Saved in this browser/)).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Review Copy…' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('recovered after reload');
+
+    await user.click(screen.getByRole('button', { name: 'Restore Copy' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('Local unsaved copy')).not.toBeInTheDocument());
+
+    expect(fake.contents.save).toHaveBeenCalledWith('moons/Io.ipynb', {
+      type: 'notebook',
+      format: 'json',
+      content: recovered,
+    });
+    expect(modelOf().cells.get(0).sharedModel.getSource()).toBe('print("recovered after reload")');
+    expect(modelOf().dirty).toBe(false);
+    expect(await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb')).toBeUndefined();
+  });
+
+  it('auto-clears silently on reopen when the local copy matches disk content', async () => {
+    const scope = recentsKey({ kind: 'ganymede', url: '', token: '' });
+    await getLocalRecoveryStore().save({
+      scope,
+      path: 'moons/Io.ipynb',
+      content: structuredClone(NOTEBOOK),
+      reason: 'unsaved_edits',
+    });
+
+    const { latest } = setup();
+    await waitFor(() => expect(latest()?.path).toBe('moons/Io.ipynb'));
+    await waitFor(async () => {
+      expect(await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb')).toBeUndefined();
+    });
+    expect(screen.queryByText('Local unsaved copy')).not.toBeInTheDocument();
+  });
+
+  it('discards the local copy directly from the banner', async () => {
+    const user = userEvent.setup();
+    const scope = recentsKey({ kind: 'ganymede', url: '', token: '' });
+    const recovered = structuredClone(NOTEBOOK);
+    recovered.cells[0]!.source = 'print("discard me")';
+    await getLocalRecoveryStore().save({
+      scope,
+      path: 'moons/Io.ipynb',
+      content: recovered,
+      reason: 'unsaved_edits',
+    });
+
+    const { latest } = setup();
+    await waitFor(() => expect(latest()?.path).toBe('moons/Io.ipynb'));
+    expect(await screen.findByText('Local unsaved copy')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(screen.queryByText('Local unsaved copy')).not.toBeInTheDocument());
+    expect(await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb')).toBeUndefined();
+  });
+
+  it('shows both server and local copies distinctly when they differ, and deduplicates identical copies', async () => {
+    const { YNotebook } = await import('@jupyter/ydoc');
+    const scope = recentsKey({ kind: 'ganymede', url: '', token: '' });
+
+    const serverNb = structuredClone(NOTEBOOK);
+    serverNb.cells[0]!.source = 'print("server copy")';
+    const localNb = structuredClone(NOTEBOOK);
+    localNb.cells[0]!.source = 'print("newer local offline edit")';
+
+    await getLocalRecoveryStore().save({
+      scope,
+      path: 'moons/Io.ipynb',
+      content: localNb,
+      reason: 'offline',
+    });
+
+    const shared = new YNotebook();
+    shared.fromJSON(structuredClone(NOTEBOOK) as never);
+    serverSettings = ServerConnection.makeSettings({
+      baseUrl: 'http://127.0.0.1:1/',
+      fetch: (async (input: RequestInfo | URL) => {
+        const url = input instanceof Request ? input.url : String(input);
+        const u = new URL(url);
+        if (u.pathname.endsWith('/api/collaboration/recovery')) {
+          return new Response(
+            JSON.stringify({
+              copies: [
+                {
+                  id: 'srv-diff',
+                  path: 'moons/Io.ipynb',
+                  at: '2026-11-28T10:00:00Z',
+                  reason: 'save_failed',
+                  cells: [],
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            id: 'srv-diff',
+            path: 'moons/Io.ipynb',
+            at: '2026-11-28T10:00:00Z',
+            reason: 'save_failed',
+            cells: [],
+            content: serverNb,
+          }),
+          { status: 200 },
+        );
+      }) as unknown as typeof fetch,
+    });
+    const join = vi.spyOn(NotebookRoom, 'join').mockResolvedValue({
+      notebook: shared,
+      connected: true,
+      live: true,
+      onConnection: () => () => {},
+      watchLive: () => () => {},
+      save: vi.fn(async () => 'success' as const),
+      dispose: vi.fn(),
+    } as unknown as NotebookRoom);
+
+    const user = userEvent.setup();
+    const first = setup();
+    expect(await screen.findByText('Save needs attention')).toBeVisible();
+    expect(await screen.findByRole('button', { name: 'Review Copies (2)…' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Review Copies (2)…' }));
+    const listbox = await screen.findByRole('listbox', { name: 'Available recovery copies' });
+    expect(listbox).toHaveTextContent('Local unsaved copy');
+    expect(listbox).toHaveTextContent('Save failed on the server');
+    first.unmount();
+
+    // Now test identical server copy -> local copy is deduplicated automatically.
+    await getLocalRecoveryStore().save({
+      scope,
+      path: 'moons/Io.ipynb',
+      content: serverNb,
+      reason: 'save_failed',
+    });
+    const second = setup();
+    expect(await screen.findByRole('button', { name: 'Review Copy…' })).toBeVisible();
+    await waitFor(async () => {
+      expect(await getLocalRecoveryStore().get(scope, 'moons/Io.ipynb')).toBeUndefined();
+    });
+    second.unmount();
+    join.mockRestore();
   });
 });

@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { Contents, ServerConnection } from '@jupyterlab/services';
 import { downloadFile } from '../lib/download';
+import {
+  LOCAL_RECOVERY_COPY_ID,
+  type LocalRecoverySnapshot,
+  localRecoveryReasonLabel,
+} from '../lib/local-recovery';
 import { useModalFocus } from '../lib/modal-focus';
 import {
   type RecoveryCellDiff,
@@ -21,15 +26,37 @@ import {
 export type RecoverySheetProps = {
   path: string;
   name: string;
-  settings: ServerConnection.ISettings;
+  settings?: ServerConnection.ISettings;
+  /** Whether to query `/api/collaboration/recovery` on the server. Defaults to `Boolean(settings)`. */
+  hasServerRecovery?: boolean;
   contents: Pick<Contents.IManager, 'save'>;
   initialSummary?: RoomRecoverySummary;
+  /** Local unsaved copy held in this browser's IndexedDB (#808). */
+  localCopy?: LocalRecoverySnapshot;
   currentNotebook?: nbformat.INotebookContent;
   hasUnsavedEdits?: boolean;
   roomClosed?: boolean;
   onCopiesChanged(copies: RecoveryCopyMeta[]): void;
   onRestored(copy: RecoveryCopy): Promise<void> | void;
+  onRestoreLocal?(copy: LocalRecoverySnapshot): Promise<void> | void;
+  onDiscardLocal?(): Promise<void> | void;
   onClose(): void;
+};
+
+type PickerEntry = {
+  kind: 'local' | 'server';
+  id: string;
+  label: string;
+  at: string;
+};
+
+type ActiveRecoveryView = {
+  kind: 'local' | 'server';
+  label: string;
+  at: string;
+  detail?: string;
+  cells: string[];
+  content: nbformat.INotebookContent;
 };
 
 function recoveryDownloadName(name: string): string {
@@ -63,29 +90,41 @@ function statusBadgeLabel(status: RecoveryCellDiff['status']): string {
 
 /**
  * Sheet to inspect, diff, download, restore, or discard server-saved recovery
- * copies for a notebook (#831).
+ * copies (#831) and/or a local unsaved copy kept in IndexedDB (#808).
  */
 export function RecoverySheet({
   path,
   name,
   settings,
+  hasServerRecovery,
   contents,
   initialSummary,
+  localCopy,
   currentNotebook,
   hasUnsavedEdits = false,
   roomClosed = false,
   onCopiesChanged,
   onRestored,
+  onRestoreLocal,
+  onDiscardLocal,
   onClose,
 }: RecoverySheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   useModalFocus(sheetRef, () => closeRef.current);
 
+  const queryServer = Boolean(settings && (hasServerRecovery ?? true));
+
   const [copies, setCopies] = useState<RecoveryCopyMeta[]>([]);
-  const [selectedId, setSelectedId] = useState<string | undefined>(initialSummary?.id);
+  const [selectedId, setSelectedId] = useState<string | undefined>(() =>
+    queryServer
+      ? (initialSummary?.id ?? (localCopy ? LOCAL_RECOVERY_COPY_ID : undefined))
+      : localCopy
+        ? LOCAL_RECOVERY_COPY_ID
+        : undefined,
+  );
   const [copy, setCopy] = useState<RecoveryCopy>();
-  const [loadingList, setLoadingList] = useState(true);
+  const [loadingList, setLoadingList] = useState(queryServer);
   const [loadingCopy, setLoadingCopy] = useState(false);
   const [busyAction, setBusyAction] = useState<'restore' | 'discard'>();
   const [notice, setNotice] = useState<string>();
@@ -96,6 +135,9 @@ export function RecoverySheet({
   useEffect(() => {
     onCopiesChangedRef.current = onCopiesChanged;
   }, [onCopiesChanged]);
+
+  const localCopyRef = useRef(localCopy);
+  localCopyRef.current = localCopy;
 
   const busy = Boolean(busyAction);
 
@@ -112,6 +154,7 @@ export function RecoverySheet({
 
   const loadSelectedCopy = useCallback(
     async (id: string, cancelledRef: { cancelled: boolean }) => {
+      if (!settings) return;
       setLoadingCopy(true);
       setError(undefined);
       const result = await fetchRecoveryCopyOrRefresh(settings, path, id);
@@ -131,8 +174,8 @@ export function RecoverySheet({
       if (result.list.kind === 'unsupported') {
         setCopies([]);
         onCopiesChangedRef.current([]);
-        setSelectedId(undefined);
-        setNotice('No recovery copies remain for this notebook.');
+        setSelectedId(localCopyRef.current ? LOCAL_RECOVERY_COPY_ID : undefined);
+        if (!localCopyRef.current) setNotice('No recovery copies remain for this notebook.');
         return;
       }
       if (result.list.kind === 'error') {
@@ -147,13 +190,22 @@ export function RecoverySheet({
           ? 'That recovery copy was already removed on the server. Showing the updated list.'
           : 'That recovery copy was already removed on the server.',
       );
-      setSelectedId(next[0]?.id);
+      setSelectedId(next[0]?.id ?? (localCopyRef.current ? LOCAL_RECOVERY_COPY_ID : undefined));
     },
     [path, settings],
   );
 
   // Initial list load on mount / path change.
   useEffect(() => {
+    if (!queryServer || !settings) {
+      setLoadingList(false);
+      setCopies([]);
+      setCopy(undefined);
+      setError(undefined);
+      setNotice(undefined);
+      setSelectedId(localCopyRef.current ? LOCAL_RECOVERY_COPY_ID : undefined);
+      return;
+    }
     const state = { cancelled: false };
     setLoadingList(true);
     setError(undefined);
@@ -165,12 +217,15 @@ export function RecoverySheet({
       if (res.kind === 'unsupported') {
         setCopies([]);
         onCopiesChangedRef.current([]);
-        setSelectedId(undefined);
-        setNotice('Recovery copies are not available on this server.');
+        setSelectedId(localCopyRef.current ? LOCAL_RECOVERY_COPY_ID : undefined);
+        if (!localCopyRef.current) {
+          setNotice('Recovery copies are not available on this server.');
+        }
         return;
       }
       if (res.kind === 'error') {
         setError(res.message);
+        if (localCopyRef.current) setSelectedId(LOCAL_RECOVERY_COPY_ID);
         return;
       }
       setCopies(res.copies);
@@ -178,34 +233,86 @@ export function RecoverySheet({
       const preferred =
         initialSummary?.id && res.copies.some(c => c.id === initialSummary.id)
           ? initialSummary.id
-          : res.copies[0]?.id;
+          : (res.copies[0]?.id ?? (localCopyRef.current ? LOCAL_RECOVERY_COPY_ID : undefined));
       setSelectedId(preferred);
       // If the room summary named a copy ID that isn't in the list, trigger a
       // GET /{id} 404 -> list re-read flow so the server clears stale state.
-      if (!preferred && initialSummary?.id) {
+      if (!res.copies.some(c => c.id === initialSummary?.id) && initialSummary?.id) {
         void loadSelectedCopy(initialSummary.id, state);
       }
     });
     return () => {
       state.cancelled = true;
     };
-  }, [initialSummary?.id, loadSelectedCopy, path, settings]);
+  }, [initialSummary?.id, loadSelectedCopy, path, queryServer, settings]);
 
-  // Load copy details whenever selectedId changes.
+  // Load server copy details whenever selectedId changes to a server copy.
   useEffect(() => {
-    if (!selectedId || loadingList) return;
+    if (!selectedId || selectedId === LOCAL_RECOVERY_COPY_ID || loadingList || !queryServer) return;
     if (copy?.id === selectedId) return;
     const state = { cancelled: false };
     void loadSelectedCopy(selectedId, state);
     return () => {
       state.cancelled = true;
     };
-  }, [copy?.id, loadSelectedCopy, loadingList, selectedId]);
+  }, [copy?.id, loadSelectedCopy, loadingList, queryServer, selectedId]);
+
+  // If the selected local copy was removed externally, move selection to any server copy.
+  useEffect(() => {
+    if (selectedId === LOCAL_RECOVERY_COPY_ID && !localCopy) {
+      setSelectedId(copies[0]?.id);
+    }
+  }, [copies, localCopy, selectedId]);
+
+  const pickerEntries = useMemo<PickerEntry[]>(() => {
+    const entries: PickerEntry[] = [];
+    if (localCopy) {
+      entries.push({
+        kind: 'local',
+        id: LOCAL_RECOVERY_COPY_ID,
+        label: 'Local unsaved copy',
+        at: localCopy.at,
+      });
+    }
+    for (const item of copies) {
+      entries.push({
+        kind: 'server',
+        id: item.id,
+        label: recoveryReasonLabel(item.reason),
+        at: item.at,
+      });
+    }
+    return entries;
+  }, [copies, localCopy]);
+
+  const activeView = useMemo<ActiveRecoveryView | undefined>(() => {
+    if (selectedId === LOCAL_RECOVERY_COPY_ID && localCopy) {
+      return {
+        kind: 'local',
+        label: localRecoveryReasonLabel(localCopy.reason),
+        at: localCopy.at,
+        detail: localCopy.detail,
+        cells: [],
+        content: localCopy.content,
+      };
+    }
+    if (copy && copy.id === selectedId) {
+      return {
+        kind: 'server',
+        label: recoveryReasonLabel(copy.reason),
+        at: copy.at,
+        detail: copy.detail,
+        cells: copy.cells,
+        content: copy.content,
+      };
+    }
+    return undefined;
+  }, [copy, localCopy, selectedId]);
 
   const diff = useMemo(() => {
-    if (!copy) return undefined;
-    return diffRecoveryNotebook(copy.content, currentNotebook, copy.cells);
-  }, [copy, currentNotebook]);
+    if (!activeView) return undefined;
+    return diffRecoveryNotebook(activeView.content, currentNotebook, activeView.cells);
+  }, [activeView, currentNotebook]);
 
   const visibleCells = useMemo(() => {
     if (!diff) return [];
@@ -224,7 +331,31 @@ export function RecoverySheet({
   );
 
   const restore = async () => {
-    if (!copy || busy) return;
+    if (!activeView || busy) return;
+    if (activeView.kind === 'local' && localCopy) {
+      setBusyAction('restore');
+      setError(undefined);
+      setNotice(undefined);
+      try {
+        if (onRestoreLocal) {
+          await onRestoreLocal(localCopy);
+        } else {
+          await contents.save(path, {
+            type: 'notebook',
+            format: 'json',
+            content: localCopy.content,
+          });
+        }
+        setBusyAction(undefined);
+        onClose();
+      } catch (e) {
+        setBusyAction(undefined);
+        setError(e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+
+    if (!copy || !settings) return;
     setBusyAction('restore');
     setError(undefined);
     setNotice(undefined);
@@ -254,7 +385,28 @@ export function RecoverySheet({
   };
 
   const discard = async () => {
-    if (!copy || busy) return;
+    if (!activeView || busy) return;
+    if (activeView.kind === 'local') {
+      setBusyAction('discard');
+      setError(undefined);
+      setNotice(undefined);
+      try {
+        await onDiscardLocal?.();
+      } catch (e) {
+        setBusyAction(undefined);
+        setError(e instanceof Error ? e.message : String(e));
+        return;
+      }
+      setBusyAction(undefined);
+      if (copies.length > 0) {
+        setSelectedId(copies[0].id);
+      } else {
+        onClose();
+      }
+      return;
+    }
+
+    if (!copy || !settings) return;
     setBusyAction('discard');
     setError(undefined);
     setNotice(undefined);
@@ -270,23 +422,34 @@ export function RecoverySheet({
       setCopies(refreshed.copies);
       onCopiesChangedRef.current(refreshed.copies);
       setCopy(undefined);
-      setSelectedId(refreshed.copies[0]?.id);
-      if (refreshed.copies.length === 0) onClose();
+      const nextId =
+        refreshed.copies[0]?.id ?? (localCopyRef.current ? LOCAL_RECOVERY_COPY_ID : undefined);
+      setSelectedId(nextId);
+      if (!nextId) onClose();
       return;
     }
     if (refreshed.kind === 'unsupported') {
       onCopiesChangedRef.current([]);
-      onClose();
+      if (localCopyRef.current) {
+        setSelectedId(LOCAL_RECOVERY_COPY_ID);
+      } else {
+        onClose();
+      }
       return;
     }
     setError(refreshed.message);
   };
 
   const download = () => {
-    if (!copy) return;
-    const text = JSON.stringify(copy.content, null, 1) + '\n';
+    if (!activeView) return;
+    const text = JSON.stringify(activeView.content, null, 1) + '\n';
     downloadFile(recoveryDownloadName(name), text, 'application/x-ipynb+json');
   };
+
+  const title =
+    pickerEntries.length === 1 && pickerEntries[0].kind === 'local' && !queryServer
+      ? `Local recovery copy for ${name}`
+      : `Recovery copies for ${name}`;
 
   return (
     <div className="sheet-backdrop">
@@ -297,7 +460,7 @@ export function RecoverySheet({
         aria-modal="true"
         aria-labelledby="recovery-sheet-title"
       >
-        <h2 id="recovery-sheet-title">Recovery copies for {name}</h2>
+        <h2 id="recovery-sheet-title">{title}</h2>
 
         {loadingList && <p role="status">Loading recovery copies…</p>}
 
@@ -307,13 +470,13 @@ export function RecoverySheet({
           </p>
         )}
 
-        {copies.length > 1 && (
+        {pickerEntries.length > 1 && (
           <div
             className="recovery-copy-picker"
             role="listbox"
             aria-label="Available recovery copies"
           >
-            {copies.map(item => (
+            {pickerEntries.map(item => (
               <button
                 key={item.id}
                 type="button"
@@ -323,38 +486,45 @@ export function RecoverySheet({
                 disabled={busy}
                 onClick={() => {
                   setNotice(undefined);
+                  setError(undefined);
                   setSelectedId(item.id);
                 }}
               >
-                <span className="recovery-copy-tab-reason">{recoveryReasonLabel(item.reason)}</span>
+                <span className="recovery-copy-tab-reason">{item.label}</span>
                 <span className="recovery-copy-tab-time">{formatRecoveryTimestamp(item.at)}</span>
               </button>
             ))}
           </div>
         )}
 
-        {!loadingList && copies.length === 0 && !loadingCopy && !error && (
+        {!loadingList && pickerEntries.length === 0 && !loadingCopy && !error && (
           <p className="hint recovery-empty">No recovery copies remain for this notebook.</p>
         )}
 
-        {loadingCopy && <p role="status">Loading recovery copy…</p>}
+        {loadingCopy && selectedId !== LOCAL_RECOVERY_COPY_ID && (
+          <p role="status">Loading recovery copy…</p>
+        )}
 
-        {copy && diff && (
+        {activeView && diff && (
           <div className="recovery-copy-body">
             <div className="recovery-meta">
               <div className="recovery-meta-row">
-                <span className="recovery-reason-pill">{recoveryReasonLabel(copy.reason)}</span>
-                <span className="recovery-timestamp">{formatRecoveryTimestamp(copy.at)}</span>
+                <span
+                  className={`recovery-reason-pill${activeView.kind === 'local' ? ' is-local' : ''}`}
+                >
+                  {activeView.label}
+                </span>
+                <span className="recovery-timestamp">{formatRecoveryTimestamp(activeView.at)}</span>
               </div>
-              {copy.detail && (
+              {activeView.detail && (
                 <p className="recovery-detail-line">
-                  Details: <span>{copy.detail}</span>
+                  Details: <span>{activeView.detail}</span>
                 </p>
               )}
-              {copy.cells.length > 0 && (
+              {activeView.cells.length > 0 && (
                 <div className="recovery-conflict-cells" role="note">
                   <strong>Conflicting cells:</strong>{' '}
-                  {copy.cells.map(id => (
+                  {activeView.cells.map(id => (
                     <code key={id} className="recovery-cell-id">
                       {id}
                     </code>
@@ -462,7 +632,7 @@ export function RecoverySheet({
           >
             Close
           </button>
-          {copy && (
+          {activeView && (
             <>
               <button type="button" className="push-button" onClick={download} disabled={busy}>
                 Download Copy

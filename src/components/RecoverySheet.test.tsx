@@ -5,6 +5,11 @@ import { ServerConnection } from '@jupyterlab/services';
 import { describe, expect, it, vi } from 'vitest';
 import { RecoveryBanner } from './RecoveryBanner';
 import { RecoverySheet } from './RecoverySheet';
+import {
+  type LocalRecoverySnapshot,
+  describeRecoveryBanner,
+  localRecoveryKey,
+} from '../lib/local-recovery';
 import { describeSaveAttention } from '../lib/room-recovery';
 
 function makeSettings(fetch: typeof globalThis.fetch): ServerConnection.ISettings {
@@ -392,5 +397,183 @@ describe('RecoverySheet (#831)', () => {
     await screen.findByText(/not available on this server/i);
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+function makeLocalSnapshot(
+  content: nbformat.INotebookContent,
+  over: Partial<LocalRecoverySnapshot> = {},
+): LocalRecoverySnapshot {
+  return {
+    key: localRecoveryKey('ganymede:', 'work.ipynb'),
+    scope: 'ganymede:',
+    path: 'work.ipynb',
+    at: '2026-11-28T12:00:00Z',
+    updatedAtMs: Date.parse('2026-11-28T12:00:00Z'),
+    reason: 'save_failed',
+    detail: 'Disk full',
+    sizeBytes: JSON.stringify(content).length,
+    content,
+    ...over,
+  };
+}
+
+describe('Local recovery banner and sheet (#808)', () => {
+  it('renders local-only RecoveryBanner with Review Copy…, Download Copy, and Discard', async () => {
+    const user = userEvent.setup();
+    const localCopy = makeLocalSnapshot(
+      makeNotebook([{ id: 'c1', cell_type: 'code', source: 'x = 99' }]),
+    );
+    const attention = describeRecoveryBanner({ localCopy })!;
+    const onReview = vi.fn();
+    const onRetrySave = vi.fn();
+    const onDownload = vi.fn();
+    const onDiscard = vi.fn();
+
+    render(
+      <RecoveryBanner
+        attention={attention}
+        localOnly={true}
+        canRetrySave={false}
+        canReview={true}
+        canDiscard={true}
+        onReview={onReview}
+        onRetrySave={onRetrySave}
+        onDownload={onDownload}
+        onDiscard={onDiscard}
+      />,
+    );
+
+    expect(screen.getByText('Local unsaved copy')).toBeVisible();
+    expect(screen.getByText(/Disk full · Saved in this browser/)).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Retry Save' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Review Copy…' }));
+    await user.click(screen.getByRole('button', { name: 'Download Copy' }));
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+
+    expect(onReview).toHaveBeenCalledTimes(1);
+    expect(onDownload).toHaveBeenCalledTimes(1);
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows local copy diff without querying server, restores or keeps copy on error, and discards', async () => {
+    const user = userEvent.setup();
+    const current = makeNotebook([{ id: 'c1', cell_type: 'code', source: 'x = 1' }]);
+    const localContent = makeNotebook([{ id: 'c1', cell_type: 'code', source: 'x = 42' }]);
+    const localCopy = makeLocalSnapshot(localContent);
+    const fetch = vi.fn();
+
+    const onRestoreLocal = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Still offline'))
+      .mockResolvedValueOnce(undefined);
+    const onDiscardLocal = vi.fn(async () => {});
+    const onClose = vi.fn();
+
+    render(
+      <RecoverySheet
+        path="work.ipynb"
+        name="work.ipynb"
+        settings={makeSettings(fetch)}
+        hasServerRecovery={false}
+        contents={{ save: vi.fn() }}
+        localCopy={localCopy}
+        currentNotebook={current}
+        onCopiesChanged={() => {}}
+        onRestored={() => {}}
+        onRestoreLocal={onRestoreLocal}
+        onDiscardLocal={onDiscardLocal}
+        onClose={onClose}
+      />,
+    );
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(screen.getByText('Local recovery copy for work.ipynb')).toBeVisible();
+    expect(screen.getByText(/x = 42/)).toBeVisible();
+    expect(screen.getByText(/x = 1/)).toBeVisible();
+
+    // First restore attempt fails: error is shown and sheet stays open.
+    await user.click(screen.getByRole('button', { name: 'Restore Copy' }));
+    await screen.findByText('Still offline');
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Second restore attempt succeeds and closes.
+    await user.click(screen.getByRole('button', { name: 'Restore Copy' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onRestoreLocal).toHaveBeenCalledWith(localCopy);
+  });
+
+  it('keeps local unsaved copy and server recovery copies distinct in the picker', async () => {
+    const user = userEvent.setup();
+    const current = makeNotebook([{ id: 'c1', cell_type: 'code', source: 'x = 0' }]);
+    const localContent = makeNotebook([{ id: 'c1', cell_type: 'code', source: 'x = "local"' }]);
+    const serverContent = makeNotebook([{ id: 'c1', cell_type: 'code', source: 'x = "server"' }]);
+    const localCopy = makeLocalSnapshot(localContent);
+
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const u = new URL(url);
+      if (u.pathname.endsWith('/api/collaboration/recovery')) {
+        return new Response(
+          JSON.stringify({
+            copies: [
+              {
+                id: 'srv-1',
+                path: 'work.ipynb',
+                at: '2026-11-28T11:00:00Z',
+                reason: 'save_failed',
+                cells: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          id: 'srv-1',
+          path: 'work.ipynb',
+          at: '2026-11-28T11:00:00Z',
+          reason: 'save_failed',
+          cells: [],
+          content: serverContent,
+        }),
+        { status: 200 },
+      );
+    });
+
+    const onDiscardLocal = vi.fn(async () => {});
+    const onClose = vi.fn();
+
+    render(
+      <RecoverySheet
+        path="work.ipynb"
+        name="work.ipynb"
+        settings={makeSettings(fetch)}
+        contents={{ save: vi.fn() }}
+        localCopy={localCopy}
+        currentNotebook={current}
+        onCopiesChanged={() => {}}
+        onRestored={() => {}}
+        onDiscardLocal={onDiscardLocal}
+        onClose={onClose}
+      />,
+    );
+
+    const listbox = await screen.findByRole('listbox', { name: 'Available recovery copies' });
+    expect(listbox).toHaveTextContent('Local unsaved copy');
+    expect(listbox).toHaveTextContent('Save failed on the server');
+    await screen.findByText(/x = "server"/);
+
+    // Switch to local copy tab.
+    await user.click(screen.getByRole('option', { name: /Local unsaved copy/ }));
+    expect(screen.getByText(/x = "local"/)).toBeVisible();
+
+    // Discarding local copy switches back to server copy instead of closing.
+    await user.click(screen.getByRole('button', { name: 'Discard Copy' }));
+    await waitFor(() => expect(onDiscardLocal).toHaveBeenCalledTimes(1));
+    expect(onClose).not.toHaveBeenCalled();
+    await screen.findByText(/x = "server"/);
   });
 });

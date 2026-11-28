@@ -82,6 +82,7 @@ import { sendTestReport } from './lib/crash-reports';
 import { useSignals } from './lib/useSignal';
 import { fileActions, within } from './lib/file-actions';
 import { moveChosenViews, movePositions } from './lib/journal';
+import { getLocalRecoveryStore } from './lib/local-recovery';
 import { useFileSearch } from './lib/search';
 import {
   clearRecents,
@@ -261,10 +262,14 @@ export function App() {
     // The view chosen for a notebook goes with it.
     const b = backendRef.current;
     if (b) {
-      moveChosenViews(recentsKey(b.config), from, to);
-      movePositions(recentsKey(b.config), from, to);
+      const scope = recentsKey(b.config);
+      moveChosenViews(scope, from, to);
+      movePositions(scope, from, to);
       // The recent consoles in it follow, as the one shown does (#735).
-      moveConsoleFolders(recentsKey(b.config), from, to);
+      moveConsoleFolders(scope, from, to);
+      const localRecovery = getLocalRecoveryStore();
+      if (to === null) void localRecovery.removeUnder(scope, from);
+      else void localRecovery.moveUnder(scope, from, to);
     }
     setDuckFolder(f =>
       f === undefined || !within(f, from) ? f : to === null ? undefined : to + f.slice(from.length),
@@ -286,8 +291,10 @@ export function App() {
     (from: string, to: string) => {
       const b = backendRef.current;
       if (b) {
-        moveChosenViews(recentsKey(b.config), from, to);
-        movePositions(recentsKey(b.config), from, to);
+        const scope = recentsKey(b.config);
+        moveChosenViews(scope, from, to);
+        movePositions(scope, from, to);
+        void getLocalRecoveryStore().moveUnder(scope, from, to);
       }
       setOpenPath(p => (p === from ? to : p));
       followRun(from, to);
