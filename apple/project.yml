@@ -627,6 +627,8 @@ targets:
       - path: Sources/Ganymede/SidebarKey.swift
       - path: Sources/Ganymede/FileSource.swift
       - path: Sources/Ganymede/NavigatorTab.swift
+      # ⌘⇧F focus claim and ownership state (#890).
+      - path: Sources/Ganymede/FindFocus.swift
       # The sidebar's foot in words (#873).
       - path: Sources/Ganymede/ProjectLineText.swift
       # The sidebar's glass tint and caption contrast (#896, #878).
@@ -722,6 +724,8 @@ targets:
       - path: Sources/Ganymede/SidebarKey.swift
       - path: Sources/Ganymede/FileSource.swift
       - path: Sources/Ganymede/NavigatorTab.swift
+      # ⌘⇧F focus claim and ownership state (#890).
+      - path: Sources/Ganymede/FindFocus.swift
       # The sidebar's foot in words (#873).
       - path: Sources/Ganymede/ProjectLineText.swift
       # The sidebar's glass tint and caption contrast (#896, #878).
