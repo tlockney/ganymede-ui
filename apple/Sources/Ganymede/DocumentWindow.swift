@@ -21,6 +21,7 @@ final class PageDocument {
     /// active tab drives `window.isDocumentEdited` and `window.representedURL` (#904).
     @ObservationIgnored var isActiveInWindow = true {
         didSet {
+            guard isActiveInWindow != oldValue else { return }
             if isActiveInWindow { syncWindow() }
         }
     }
@@ -60,15 +61,20 @@ final class PageDocument {
     /// guard when `installCloseGuard` is true (tabbed windows install one
     /// window-level guard via `WorkspaceTabController`).
     func attach(to window: NSWindow, installCloseGuard: Bool = true) {
+        var changed = false
         if self.window !== window {
             self.window = window
+            changed = true
         }
         if installCloseGuard, closeGuard == nil {
             let closeGuard = CloseGuard(document: self, original: window.delegate)
             window.delegate = closeGuard
             self.closeGuard = closeGuard
+            changed = true
         }
-        syncWindow()
+        if changed {
+            syncWindow()
+        }
     }
 
     /// Detaches this document when its tab is removed or closed so it no longer
@@ -80,10 +86,15 @@ final class PageDocument {
     }
 
     func syncWindow() {
-        guard isActiveInWindow else { return }
-        window?.isDocumentEdited = dirty
+        guard isActiveInWindow, let window else { return }
+        if window.isDocumentEdited != dirty {
+            window.isDocumentEdited = dirty
+        }
         // The proxy icon: drag the file, ⌘-click for its folder.
-        window?.representedURL = DocumentEffects.representedURL(for: file, in: place)
+        let represented = DocumentEffects.representedURL(for: file, in: place)
+        if window.representedURL != represented {
+            window.representedURL = represented
+        }
     }
 
     /// Saves through the page; true when there is nothing left unsaved.

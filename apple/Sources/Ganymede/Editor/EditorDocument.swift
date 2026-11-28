@@ -48,6 +48,7 @@ final class EditorDocument {
     /// the active tab drives `window.isDocumentEdited` and `window.representedURL` (#904).
     @ObservationIgnored var isActiveInWindow = true {
         didSet {
+            guard isActiveInWindow != oldValue else { return }
             if isActiveInWindow { syncWindow() }
         }
     }
@@ -220,15 +221,20 @@ final class EditorDocument {
     /// The window this file is shown in: its edited dot, and a prompt
     /// before it closes with unsaved edits when `installCloseGuard` is true.
     func attach(to window: NSWindow, installCloseGuard: Bool = true) {
+        var changed = false
         if self.window !== window {
             self.window = window
+            changed = true
         }
         if installCloseGuard, closeGuard == nil {
             let closeGuard = EditorCloseGuard(document: self, original: window.delegate)
             window.delegate = closeGuard
             self.closeGuard = closeGuard
+            changed = true
         }
-        syncWindow()
+        if changed {
+            syncWindow()
+        }
     }
 
     /// Detaches this document when its tab is removed or closed so it no longer
@@ -241,13 +247,16 @@ final class EditorDocument {
 
     func syncWindow() {
         guard isActiveInWindow, let window else { return }
-        window.isDocumentEdited = dirty
+        if window.isDocumentEdited != dirty {
+            window.isDocumentEdited = dirty
+        }
         // The proxy icon. The Mac's server is rooted at `/`; a machine's
         // file is no file of this Mac's (#855).
-        if machine == nil {
-            window.representedURL = URL(fileURLWithPath: path.hasPrefix("/") ? path : "/" + path)
-        } else {
-            window.representedURL = nil
+        let represented: URL? = machine == nil
+            ? URL(fileURLWithPath: path.hasPrefix("/") ? path : "/" + path)
+            : nil
+        if window.representedURL != represented {
+            window.representedURL = represented
         }
     }
 

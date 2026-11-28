@@ -82,10 +82,13 @@ enum WorkspaceTabs {
     }
 
     static func unregisterCustomTabHost(for window: NSWindow) {
-        customHosts.removeObject(forKey: window)
+        if customHosts.object(forKey: window) != nil {
+            customHosts.removeObject(forKey: window)
+        }
     }
 
     static func registerController(_ controller: WorkspaceTabController, for window: NSWindow) {
+        if controllers.object(forKey: window) === controller { return }
         controllers.setObject(controller, forKey: window)
     }
 
@@ -311,7 +314,9 @@ enum WorkspaceTabs {
     static func join(_ window: NSWindow, alone: Bool = false) {
         windows.add(window)
         if isCustomStripEnabled {
-            window.tabbingMode = .disallowed
+            if window.tabbingMode != .disallowed {
+                window.tabbingMode = .disallowed
+            }
             return
         }
         guard window.tabbingIdentifier != identifier else { return }

@@ -26,7 +26,9 @@ struct WorkspaceTabHost: View {
         }
         .background(
             WindowReader { window in
-                hostWindow.window = window
+                if hostWindow.window !== window {
+                    hostWindow.window = window
+                }
                 syncWindowRegistration(window)
             }
         )

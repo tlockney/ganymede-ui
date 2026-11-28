@@ -744,6 +744,9 @@ final class WorkspaceTabController {
     // MARK: - Window Attachment & Close Guard
 
     func attach(to window: NSWindow) {
+        guard hostWindow !== window || closeGuard == nil || window.delegate !== closeGuard else {
+            return
+        }
         hostWindow = window
         if closeGuard == nil || window.delegate !== closeGuard {
             if let existing = window.delegate as? WorkspaceWindowCloseGuard,
@@ -780,14 +783,20 @@ final class WorkspaceTabController {
         guard let window = window ?? hostWindow else { return }
         switch activeSession?.payload {
         case .page(let tab):
-            tab.document.isActiveInWindow = true
-            tab.document.syncWindow()
+            if !tab.document.isActiveInWindow {
+                tab.document.isActiveInWindow = true
+            } else {
+                tab.document.syncWindow()
+            }
         case .editor(let tab):
-            tab.document.isActiveInWindow = true
-            tab.document.syncWindow()
+            if !tab.document.isActiveInWindow {
+                tab.document.isActiveInWindow = true
+            } else {
+                tab.document.syncWindow()
+            }
         case .terminal, .sampleConsole, .sampleMachine, .sampleTerminal, nil:
-            window.isDocumentEdited = false
-            window.representedURL = nil
+            if window.isDocumentEdited { window.isDocumentEdited = false }
+            if window.representedURL != nil { window.representedURL = nil }
         }
     }
 
@@ -866,11 +875,19 @@ final class WorkspaceTabController {
     private func attachSessionDocument(_ session: Session, to window: NSWindow, active: Bool) {
         switch session.payload {
         case .page(let tab):
-            tab.document.isActiveInWindow = active
-            tab.document.attach(to: window, installCloseGuard: false)
+            if tab.document.isActiveInWindow != active {
+                tab.document.isActiveInWindow = active
+            }
+            if tab.document.window !== window {
+                tab.document.attach(to: window, installCloseGuard: false)
+            }
         case .editor(let tab):
-            tab.document.isActiveInWindow = active
-            tab.document.attach(to: window, installCloseGuard: false)
+            if tab.document.isActiveInWindow != active {
+                tab.document.isActiveInWindow = active
+            }
+            if tab.document.window !== window {
+                tab.document.attach(to: window, installCloseGuard: false)
+            }
         case .terminal, .sampleConsole, .sampleMachine, .sampleTerminal:
             break
         }

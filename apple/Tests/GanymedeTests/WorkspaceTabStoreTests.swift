@@ -406,5 +406,107 @@ final class WorkspaceTabStoreTests: XCTestCase {
         XCTAssertEqual(controller.selectedID, betaID)
         XCTAssertTrue(openedWindowTargets.isEmpty)
     }
+
+    func testWindowAttachmentAndChromeSyncAreIdempotent() {
+        final class ChromeWriteSpyWindow: NSWindow {
+            var delegateWrites = 0
+            var editedWrites = 0
+            var representedURLWrites = 0
+
+            override var delegate: (any NSWindowDelegate)? {
+                get { super.delegate }
+                set {
+                    delegateWrites += 1
+                    super.delegate = newValue
+                }
+            }
+
+            override var isDocumentEdited: Bool {
+                get { super.isDocumentEdited }
+                set {
+                    editedWrites += 1
+                    super.isDocumentEdited = newValue
+                }
+            }
+
+            override var representedURL: URL? {
+                get { super.representedURL }
+                set {
+                    representedURLWrites += 1
+                    super.representedURL = newValue
+                }
+            }
+        }
+
+        let root = URL(fileURLWithPath: "/Users/tester/Project", isDirectory: true)
+        let notebookURL = root.appendingPathComponent("Loop.ipynb")
+        let editorPath = "/Users/tester/Project/notes.txt"
+
+        let controller = WorkspaceTabController(target: .file(notebookURL), root: root)
+        let spy = ChromeWriteSpyWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        spy.isReleasedWhenClosed = false
+        guard let pageTab = controller.activePage else {
+            return XCTFail("Expected initial PageTabState")
+        }
+        pageTab.document.update(DocumentMessage(file: notebookURL, dirty: true), in: .thisDevice)
+
+        // Initial attach writes delegate, edited flag, and representedURL once each.
+        controller.attach(to: spy)
+        XCTAssertEqual(spy.delegateWrites, 1)
+        XCTAssertEqual(spy.editedWrites, 1)
+        XCTAssertEqual(spy.representedURLWrites, 1)
+
+        // Repeated attach and syncWindowChrome calls (simulating WindowReader.updateNSView passes)
+        // must not touch AppKit window properties when nothing changed.
+        for _ in 0..<5 {
+            controller.attach(to: spy)
+            controller.syncWindowChrome(spy)
+            WorkspaceTabs.registerController(controller, for: spy)
+        }
+        pageTab.document.isActiveInWindow = true
+        pageTab.document.attach(to: spy, installCloseGuard: false)
+        XCTAssertEqual(spy.delegateWrites, 1)
+        XCTAssertEqual(spy.editedWrites, 1)
+        XCTAssertEqual(spy.representedURLWrites, 1)
+
+        // Switching to a clean editor tab updates edited + representedURL once, then stays silent.
+        _ = controller.addEditorTab(
+            request: EditorRequest(path: editorPath, machine: nil),
+            machineName: nil,
+            sidebarRoot: root
+        )
+        guard let editorTab = controller.activeEditor else {
+            return XCTFail("Expected active EditorTabState")
+        }
+        let editsAfterEditorSwitch = spy.editedWrites
+        let urlsAfterEditorSwitch = spy.representedURLWrites
+        for _ in 0..<5 {
+            controller.attach(to: spy)
+            controller.syncWindowChrome(spy)
+        }
+        editorTab.document.isActiveInWindow = true
+        editorTab.document.attach(to: spy, installCloseGuard: false)
+        XCTAssertEqual(spy.editedWrites, editsAfterEditorSwitch)
+        XCTAssertEqual(spy.representedURLWrites, urlsAfterEditorSwitch)
+
+        // Switching to a terminal clears chrome once, then repeated syncs perform zero writes.
+        _ = controller.addTerminalTab(target: .local(folder: root), sidebarRoot: root)
+        let editsAfterTermSwitch = spy.editedWrites
+        let urlsAfterTermSwitch = spy.representedURLWrites
+        for _ in 0..<5 {
+            controller.attach(to: spy)
+            controller.syncWindowChrome(spy)
+        }
+        XCTAssertEqual(spy.editedWrites, editsAfterTermSwitch)
+        XCTAssertEqual(spy.representedURLWrites, urlsAfterTermSwitch)
+
+        WorkspaceTabs.unregisterController(controller, for: spy)
+        controller.detachAll(from: spy)
+    }
 }
 #endif
