@@ -62,6 +62,8 @@ struct ContentView: View {
     /// The area filling the window, if any (#250). Not kept across
     /// launches: a window comes back with its usual layout.
     @State private var layout = WindowLayout()
+    /// Whether the bottom status bar shows, kept across launches (#882).
+    @AppStorage(StatusBarContent.shownKey) private var statusBarShown = true
     /// A newer release, once a check found it (#411).
     private let updater = AppUpdater.shared
 
@@ -768,21 +770,10 @@ struct ContentView: View {
     }
 
     /// The page's `metadata.title`, once the page reports the file this
-    /// window is for: until then it is the previous notebook's, and a file
-    /// window that just changed target would take its title for a moment.
-    /// The file's name is enough to tell, and doesn't depend on how the
-    /// server spells the folder. A folder's window shows whichever
-    /// notebook its page has open.
+    /// window is for (#871).
     private var shownTitle: String? {
-        let expected: String? = switch target ?? loaded {
-        case .file(let url): url.lastPathComponent
-        case .machineFile(_, let path): (path as NSString).lastPathComponent
-        default: nil
-        }
-        if let expected, expected != pageModel.state.path.map({ ($0 as NSString).lastPathComponent }) {
-            return nil
-        }
-        return pageModel.state.title
+        WindowTarget.shownTitle(
+            target: target ?? loaded, pagePath: pageModel.state.path, metadataTitle: pageModel.state.title)
     }
 
     /// The page asks for a tab (`openTab`): a notebook or data file, or a
@@ -791,44 +782,55 @@ struct ContentView: View {
         openWindow(value: request.target(root: model.serverRootFolder))
     }
 
-    /// The notebook, with the bottom panel under it (#248). The panel stays
-    /// in the view tree while hidden, so its terminals keep running.
+    /// The notebook, with the bottom panel under it (#248), and the status
+    /// bar under the workspace (#882). The panel stays in the view tree
+    /// while hidden, so its terminals keep running.
     private var workspace: some View {
         GeometryReader { whole in
-            HStack(spacing: 0) {
-                // Areas folded by another filling the window (#250): one
-                // click brings the layout back with that area showing.
-                if layout.filled != nil, !leadingStrip.isEmpty {
-                    FoldedStrip(items: leadingStrip, axis: .vertical)
-                    Divider()
-                }
-                ZStack {
-                    notebookAndPanel
-                        .opacity(layout.filled == .inspector ? 0 : 1)
-                        .allowsHitTesting(layout.filled != .inspector)
-                        .accessibilityHidden(layout.filled == .inspector)
-                    if layout.filled == .inspector {
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    // Areas folded by another filling the window (#250): one
+                    // click brings the layout back with that area showing.
+                    if layout.filled != nil, !leadingStrip.isEmpty {
+                        FoldedStrip(items: leadingStrip, axis: .vertical)
+                        Divider()
+                    }
+                    ZStack {
+                        notebookAndPanel
+                            .opacity(layout.filled == .inspector ? 0 : 1)
+                            .allowsHitTesting(layout.filled != .inspector)
+                            .accessibilityHidden(layout.filled == .inspector)
+                        if layout.filled == .inspector {
+                            Inspector(
+                                inspector: inspector, page: pageModel, available: whole.size.width,
+                                fills: true, toggleFill: { layout.toggle(.inspector) }
+                            )
+                        }
+                    }
+                    if layout.filled == nil, inspector.isShown, showsNotebook {
                         Inspector(
                             inspector: inspector, page: pageModel, available: whole.size.width,
-                            fills: true, toggleFill: { layout.toggle(.inspector) }
+                            fills: false, toggleFill: { layout.toggle(.inspector) }
+                        )
+                    } else if layout.folds(.inspector), showsNotebook {
+                        Divider()
+                        FoldedStrip(
+                            items: InspectorTab.allCases.map { tab in
+                                FoldedStrip.Item(title: tab.title, systemImage: tab.systemImage) {
+                                    layout.restore()
+                                    inspector.show(tab)
+                                }
+                            },
+                            axis: .vertical
                         )
                     }
                 }
-                if layout.filled == nil, inspector.isShown, showsNotebook {
-                    Inspector(
-                        inspector: inspector, page: pageModel, available: whole.size.width,
-                        fills: false, toggleFill: { layout.toggle(.inspector) }
-                    )
-                } else if layout.folds(.inspector), showsNotebook {
-                    Divider()
-                    FoldedStrip(
-                        items: InspectorTab.allCases.map { tab in
-                            FoldedStrip.Item(title: tab.title, systemImage: tab.systemImage) {
-                                layout.restore()
-                                inspector.show(tab)
-                            }
-                        },
-                        axis: .vertical
+                if statusBarShown {
+                    StatusBar(
+                        active: StatusBarContent.showsContent(
+                            barShown: statusBarShown, showsNotebook: showsNotebook, filled: layout.filled),
+                        content: StatusBarContent.make(header: headerStatus, state: pageModel.state),
+                        page: pageModel
                     )
                 }
             }

@@ -602,6 +602,7 @@ targets:
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
       - path: Sources/Ganymede/HeaderStatus.swift
+      - path: Sources/Ganymede/StatusBarState.swift
       # Places: connected machines (#701).
       - path: Sources/Ganymede/Place.swift
       - path: Sources/Ganymede/PlaceReachability.swift
@@ -693,6 +694,7 @@ targets:
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
       - path: Sources/Ganymede/HeaderStatus.swift
+      - path: Sources/Ganymede/StatusBarState.swift
       - path: Sources/Ganymede/Place.swift
       - path: Sources/Ganymede/PlaceReachability.swift
       # What checks a server is this Mac's own (#883), and the lifecycle of

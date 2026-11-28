@@ -237,4 +237,40 @@ final class PageModelTests: XCTestCase {
         page.update(connected)
         XCTAssertTrue(page.ready, "the page's start is the load's")
     }
+
+    func testWatchingMemoryCountsWatchersAndResendsOnReload() {
+        let page = PageModel()
+        XCTAssertEqual(page.memoryWatchers, 0)
+        page.watchMemory(true)
+        XCTAssertEqual(page.memoryWatchers, 1)
+        XCTAssertEqual(page.pendingCount, 1)
+        page.watchMemory(true)
+        XCTAssertEqual(page.memoryWatchers, 2)
+        XCTAssertEqual(page.pendingCount, 1, "already watching")
+        page.watchMemory(false)
+        XCTAssertEqual(page.memoryWatchers, 1)
+        XCTAssertEqual(page.pendingCount, 1, "still watched by another view")
+        // Pending watch-memory isn't duplicated before it flushes, and a new
+        // page after forgetPage (or a flushed reload) receives it once ready.
+        page.committed(NSObject())
+        page.update(connected)
+        XCTAssertEqual(page.pendingCount, 1, "watch-memory on already pending")
+        page.forgetPage()
+        XCTAssertEqual(page.memoryWatchers, 1, "watchers survive page change")
+        XCTAssertEqual(page.pendingCount, 0)
+        let next = NSObject()
+        page.loadStarted(next, start: 0)
+        page.committed(next)
+        page.update(connected)
+        XCTAssertEqual(page.pendingCount, 1, "new page told watch-memory on")
+        page.watchMemory(false)
+        XCTAssertEqual(page.memoryWatchers, 0)
+        XCTAssertEqual(page.pendingCount, 2)
+        page.forgetPage()
+        let finalLoad = NSObject()
+        page.loadStarted(finalLoad, start: 0)
+        page.committed(finalLoad)
+        page.update(connected)
+        XCTAssertEqual(page.pendingCount, 0, "no watch-memory once nobody watches")
+    }
 }

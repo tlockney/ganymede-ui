@@ -336,4 +336,38 @@ final class WindowTargetTests: XCTestCase {
             TabRequest.duckdbConsole(folder: "Users/me/work").target(root: root),
             TabRequest.duckdbConsole(folder: "Users/me/work").target(root: root))
     }
+
+    // MARK: File guard on metadata title (#871)
+
+    func testShownTitleGuardsFileTargetsByFileName() throws {
+        let file = WindowTarget.file(URL(fileURLWithPath: "/Users/me/work/Io.ipynb"))
+        // 1) Matching .file returns the metadata title.
+        XCTAssertEqual(
+            WindowTarget.shownTitle(target: file, pagePath: "work/Io.ipynb", metadataTitle: "Io moons"),
+            "Io moons")
+        // 2) Another file name returns nil so the previous notebook's title doesn't flash.
+        XCTAssertNil(
+            WindowTarget.shownTitle(target: file, pagePath: "work/Europa.ipynb", metadataTitle: "Europa"))
+        // 3) nil path returns nil while the page has not opened a file yet.
+        XCTAssertNil(
+            WindowTarget.shownTitle(target: file, pagePath: nil, metadataTitle: "Previous"))
+        // 4) .machineFile path: matching returns title, mismatching or nil returns nil.
+        let machine = try XCTUnwrap(WindowTarget.machine(
+            "3F2B8C1E-AAAA-4BBB-8CCC-0123456789AB", path: "/notes/Io.ipynb", isFolder: false))
+        XCTAssertEqual(
+            WindowTarget.shownTitle(target: machine, pagePath: "notes/Io.ipynb", metadataTitle: "Io moons"),
+            "Io moons")
+        XCTAssertNil(
+            WindowTarget.shownTitle(target: machine, pagePath: "notes/Other.ipynb", metadataTitle: "Other"))
+        XCTAssertNil(
+            WindowTarget.shownTitle(target: machine, pagePath: nil, metadataTitle: "Previous"))
+        // 5) .folder target shows whichever notebook its page has open.
+        let folder = WindowTarget.folder(URL(fileURLWithPath: "/Users/me/work", isDirectory: true))
+        XCTAssertEqual(
+            WindowTarget.shownTitle(target: folder, pagePath: "work/Any.ipynb", metadataTitle: "Any"),
+            "Any")
+        XCTAssertEqual(
+            WindowTarget.shownTitle(target: folder, pagePath: nil, metadataTitle: "Any"),
+            "Any")
+    }
 }
