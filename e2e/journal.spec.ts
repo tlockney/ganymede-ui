@@ -63,7 +63,11 @@ test.afterEach(async () => {
 // and status line need more than 52px, so outside touch layouts the main
 // column's header grows to 64px while it has one; at 52 the eyebrow was cut
 // off at the top. The sidebar's rows stay where they are (#812).
-test('fits the eyebrow inside the notebook view’s header (#852)', async ({ page }) => {
+test('fits the eyebrow inside the notebook view’s header (#852)', async ({ page, browserName }) => {
+  test.skip(
+    browserName === 'webkit',
+    'Blocked by .toolbar backdrop-filter clipping ContextMenu in WebKit (#927)',
+  );
   await openWithToken(page);
   // The sidebar's first row; the lists below it gain Recents and an Outline.
   const titlebar = page.locator('.sidebar-titlebar');
@@ -792,7 +796,14 @@ test('keeps the end in view while following, and says what is new once paused (#
   }
 });
 
-test('keeps the cell in view going to the notebook and back (#816)', async ({ page }) => {
+test('keeps the cell in view going to the notebook and back (#816)', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(
+    browserName === 'webkit',
+    'Blocked by .toolbar backdrop-filter clipping ContextMenu in WebKit (#927)',
+  );
   writeFremont();
   const journal = await openFremont(page);
   await settled(page);

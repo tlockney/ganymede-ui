@@ -112,7 +112,11 @@ test('moving the folder that holds the open notebook keeps its kernel', async ({
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 393, height: 852 }, hasTouch: true, isMobile: true });
 
-  test('a long press opens the menu without opening the item', async ({ page }) => {
+  test('a long press opens the menu without opening the item', async ({ page, browserName }) => {
+    test.skip(
+      browserName === 'webkit',
+      'Uses Chromium CDP Input.dispatchTouchEvent for long-press emulation',
+    );
     await connect(page);
     await page.getByRole('button', { name: 'New Notebook' }).last().click();
     await expect(page.locator('.jp-Cell').first()).toBeVisible({ timeout: 60_000 });

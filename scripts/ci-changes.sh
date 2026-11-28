@@ -71,6 +71,8 @@ while IFS= read -r f; do
     scripts/examples-kernels.mjs | .github/workflows/examples.yml) ;;
     # Its own scheduled workflow, not run on pull requests (#840).
     .github/workflows/e2e-cdp-kernel-main.yml) ;;
+    # Its own nightly/manual workflow, not run on pull requests (#918).
+    .github/workflows/e2e-webkit.yml) ;;
     # Used only by release.yml; its unit tests run in every build job.
     scripts/testflight-notes.mjs | scripts/testflight-notes.test.mjs) ;;
     package.json | package-lock.json)
