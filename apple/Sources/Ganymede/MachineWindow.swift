@@ -65,6 +65,6 @@ struct ThisMacBadge: View {
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
             .background(Capsule().fill(Color.primary.opacity(0.1)))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(SidebarCaption())
     }
 }
