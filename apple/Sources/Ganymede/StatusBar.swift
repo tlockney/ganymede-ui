@@ -10,8 +10,8 @@ struct StatusBar: View {
 
     var active: Bool
     var content: StatusBarContent
-    var page: PageModel
-    @State private var watcher = MemoryWatcher()
+    var page: PageModel?
+    @State private var watcher = PageMemoryWatcher()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,13 +48,12 @@ struct StatusBar: View {
         .frame(height: Self.height)
         .background(Color("WindowBackground"))
         .accessibilityHidden(!active)
-        .onAppear { syncWatch(active) }
-        .onChange(of: active) { _, active in syncWatch(active) }
-        .onDisappear { syncWatch(false) }
-    }
-
-    private func syncWatch(_ wanted: Bool) {
-        watcher.update(visible: wanted) { page.watchMemory($0) }
+        .onAppear { watcher.update(page: page, visible: active) }
+        .onChange(of: active) { _, active in watcher.update(page: page, visible: active) }
+        .onChange(of: page.map(ObjectIdentifier.init)) { _, _ in
+            watcher.update(page: page, visible: active)
+        }
+        .onDisappear { watcher.update(page: nil, visible: false) }
     }
 }
 

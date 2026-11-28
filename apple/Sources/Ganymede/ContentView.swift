@@ -5,32 +5,13 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     #if os(macOS)
-    /// The notebook or folder this window shows, following the page; nil
-    /// for a window opened on nothing, until its page opens a notebook.
+    /// The notebook or folder the active page tab shows, following the page; nil
+    /// for a window opened on nothing until its page opens a notebook.
     @Binding var target: WindowTarget?
-    /// What the page was loaded for. A window opened on nothing keeps the
-    /// folder that was the default then, so a later Open Folder… (which
-    /// changes the default) leaves it alone.
-    @State private var loaded: WindowTarget
-    /// The place this window's page was loaded with (#883): a check that
-    /// verifies its machine is this Mac's own upgrades the window on its
-    /// next load, and a check that stops verifying it downgrades the window
-    /// at once, in place. `place` reads it.
-    @State private var loadedPlace: Place?
-    /// What the window's web view is made for (#883): its place and the
-    /// folder a this-Mac server is rooted at. An upgrade to this Mac's own
-    /// server, and a server restarted on another folder, are another web
-    /// view's; a downgrade is not, since making the web view again would
-    /// load the page again and drop its unsaved edits.
-    @State private var pagePlace: PagePlace
-    /// The folder the sidebar lists and New Notebook uses. It stays put
-    /// when the page opens a notebook in a subfolder, which moves `target`.
-    @State private var sidebarRoot: URL
+    /// Window-owned tab store holding every tab (`.page`, `.terminal`,
+    /// `.editor`) uniformly with no Tab 0 special-casing (#904).
+    @State private var tabController: WorkspaceTabController
     @Environment(\.openWindow) private var openWindow
-    /// The open notebook's file and unsaved edits, as the page reports them.
-    @State private var document = PageDocument()
-    /// What the page shows, for the native toolbar and menus (#205).
-    @State private var pageModel = PageModel()
     /// This window, for the Finder's open requests (#228).
     @State private var windowID = UUID()
     /// File › New Tab or New Window, when this window is the one they
@@ -46,9 +27,6 @@ struct ContentView: View {
     /// The sidebar's folder, kept likewise: it can differ from the
     /// notebook's own folder.
     @SceneStorage("window.sidebar") private var savedSidebar = ""
-    /// Whether the page has said what it shows; until then a restored
-    /// `target` that comes late still replaces what the page was loaded for.
-    @State private var pageReported = false
     @SceneStorage("panel.shown") private var panelShown = false
     @SceneStorage("panel.height") private var panelHeight = PanelController.defaultHeight
     /// Whether the sidebar shows, kept with the window across launches (#207).
@@ -86,10 +64,19 @@ struct ContentView: View {
         let model = AppModel.shared
         if loaded.place.isMachine { model.verifyThisMacNow() }
         let place = model.place(for: loaded)
-        _loaded = State(initialValue: loaded)
-        _loadedPlace = State(initialValue: place)
-        _pagePlace = State(initialValue: ContentView.PagePlace(place: place, root: model.thisMacRoot(for: place)?.path))
-        _sidebarRoot = State(initialValue: loaded.folder)
+        let initialPage = PageTabState(
+            target: target.wrappedValue,
+            loaded: loaded,
+            loadedPlace: place,
+            pagePlace: WorkspacePagePlace(place: place, root: model.thisMacRoot(for: place)?.path),
+            sidebarRoot: loaded.folder,
+            document: PageDocument()
+        )
+        _tabController = State(initialValue: WorkspaceTabController(
+            initialPage: initialPage,
+            pageDocumentFactory: { PageDocument() },
+            editorDocumentFactory: { EditorDocument($0) }
+        ))
         _request = State(initialValue: request)
     }
     #endif
@@ -175,49 +162,22 @@ struct ContentView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
         } detail: {
-            WorkspaceTabHost(
-                enabled: customTabStrip,
-                samples: customTabSamples,
-                target: target ?? loaded,
-                place: place,
-                machineName: machineName,
-                metadataTitle: shownTitle,
-                windowTitle: windowTitle,
-                page: pageModel,
-                document: document,
-                sidebarRoot: sidebarRoot,
-                windowTerminal: windowTerminal,
-                onOpenFile: { path in
-                    openWindow(value: EditorRequest(path: path, place: place))
-                },
-                onOpenTabRequest: openTab
-            ) {
+            VStack(spacing: 0) {
+                if customTabStrip {
+                    WorkspaceTabStrip(
+                        tabs: tabController.descriptors,
+                        selectedID: tabController.selectedID,
+                        newMenu: tabNewMenuItems,
+                        onSelect: { tabController.select($0) },
+                        onClose: { tabController.closeTab($0, in: tabController.hostWindow) },
+                        onCloseOthers: { tabController.closeOthers(keeping: $0, in: tabController.hostWindow) }
+                    )
+                }
                 workspace
             }
         }
         .toolbar {
-            NotebookToolbar(
-                page: pageModel, document: document,
-                // The kernel popover's Kernel Log is this device's window's
-                // alone (#858), so a machine's window passes no panel to it.
-                panel: place.isThisDevice ? panel : nil, place: place, header: headerStatus,
-                // A notebook's title, drawn with the kernel's button beside
-                // it (#867); a console or a folder keeps the system's.
-                title: showsNotebook ? windowTitle : nil,
-                // The right group's inspector toggle, and More's terminal
-                // panel item (#892): the panel is every window's — a
-                // machine's terminals run on the machine (#858), and a
-                // machine whose remote is gone keeps its panel too, empty,
-                // for the remotes' terminals there. Only a tab with a
-                // notebook has an inspector (#729).
-                inspectorShown: showsNotebook ? inspector.isShown : nil,
-                toggleInspector: { inspector.toggle() },
-                panelShown: panel.isShown,
-                toggleTerminalPanel: { panel.toggle(startingOn: windowTerminal) },
-                // An update that's ready sits at the end of the toolbar's
-                // leading region, so its arrival moves nothing to its right
-                // (#812).
-                update: updater.available)
+            WorkspaceToolbar(mode: activeToolbarMode, update: updater.available)
         }
         // The status line (#812). The system draws it and it isn't
         // clickable: the kernel button's popover opens the details. A
@@ -225,13 +185,17 @@ struct ContentView: View {
         // (#867), and `.toolbar(removing: .title)` takes the system title
         // and subtitle away. A machine's window with no notebook keeps
         // "on <machine>".
-        .navigationSubtitle(
-            showsNotebook ? "" : WindowTarget.subtitle(header: headerStatus, machineName: machineName))
+        .navigationSubtitle(activeSubtitle)
         .frame(minWidth: 720, minHeight: 480)
         // A console's tab is titled with its name (#735), a notebook with
         // its title, or its file's (#867).
-        .navigationTitle(windowTitle)
-        .modifier(WindowSceneValues(place: place, folder: sidebarRoot, panel: panel))
+        .navigationTitle(activeWindowTitle)
+        .modifier(WindowSceneValues(
+            place: activePlace,
+            folder: activeSidebarRoot,
+            panel: (activeIsTerminal || activeIsSample) ? nil : panel,
+            enabled: !activeIsSample
+        ))
         // A notebook's toolbar item draws the title (#867), so the system's
         // title and subtitle go; its tab keeps the display title, from
         // `.navigationTitle` above. One modifier with an optional kind, not
@@ -244,84 +208,147 @@ struct ContentView: View {
         // surface; a console's, a folder's and a machine's window keep the
         // system's toolbar.
         .modifier(NotebookSurface(notebook: showsNotebook))
+        .modifier(KeychainAlert(model: model))
         // Notebooks opened from the Finder (#228): the first window to see
         // them takes them. Each opens in a new tab (or brings forward
         // the one showing it), except that the window the app opened on
         // nothing at launch shows the first itself. Later, so the change
         // to `pending` is not made while views update.
         .onChange(of: model.openRequests.pending, initial: true) { _, pending in
-            guard !pending.isEmpty, place.isThisDevice else { return }
+            guard !pending.isEmpty, activePlace.isThisDevice, activePage != nil else { return }
             DispatchQueue.main.async(execute: takeOpenRequests)
         }
         .onAppear {
-            if let request {
-                WorkspaceTabs.take(request)
-                if target == nil { target = request.target }
-            } else if target == nil, let saved = WindowTarget(saved: savedTarget) {
-                // A window the system restored, without its value.
-                show(saved)
+            if let initialTab = tabController.sessions.first?.pageTab {
+                if let request {
+                    WorkspaceTabs.take(request)
+                    if target == nil {
+                        target = request.target
+                        initialTab.target = request.target
+                    }
+                } else if target == nil, let saved = WindowTarget(saved: savedTarget) {
+                    // A window the system restored, without its value.
+                    show(saved, in: initialTab)
+                }
+                // A restored window (its value restored or not) gets its
+                // sidebar's folder back too.
+                if request == nil, WindowTarget(saved: savedTarget) == target {
+                    restoreSidebar(in: initialTab)
+                }
             }
-            // A restored window (its value restored or not) gets its
-            // sidebar's folder back too.
-            if request == nil, WindowTarget(saved: savedTarget) == target {
-                restoreSidebar()
-            }
-            savedSidebar = FolderEntry.storageKey(sidebarRoot)
+            savedSidebar = FolderEntry.storageKey(activeSidebarRoot)
             savedTarget = WindowTarget.saved(target)
             noteOpenRequests()
-            model.openRequests.openWindow = { [openWindow] in openWindow(value: $0) }
+            model.openRequests.openWindow = { [openWindow] nextTarget in
+                WorkspaceTabs.openTarget(nextTarget) { openWindow(value: $0) }
+            }
         }
-        .onChange(of: target) { _, target in
+        .onChange(of: target) { _, newTarget in
             noteOpenRequests()
             // Restored after the view was made, before the page said
             // anything: show it, not what the page was loaded for.
-            if let target, !pageReported, target != loaded {
-                let restored = WindowTarget(saved: savedTarget) == target
-                show(target)
-                if restored { restoreSidebar() }
+            if let newTarget,
+               tabController.sessions.count == 1,
+               let onlyPage = activePage,
+               !onlyPage.pageReported,
+               newTarget != onlyPage.loaded,
+               newTarget != onlyPage.target {
+                let restored = WindowTarget(saved: savedTarget) == newTarget
+                show(newTarget, in: onlyPage)
+                if restored { restoreSidebar(in: onlyPage) }
             }
-            savedTarget = WindowTarget.saved(target)
-            if let window = document.window { noteWindow(window) }
+            savedTarget = WindowTarget.saved(newTarget)
+            if let window = tabController.hostWindow { noteWindow(window) }
         }
-        .onChange(of: sidebarRoot) { _, new in
-            savedSidebar = FolderEntry.storageKey(new)
-            if let window = document.window { noteWindow(window) }
+        .onChange(of: tabController.selectedID) { _, _ in
+            if let activePage {
+                if target != activePage.target { target = activePage.target }
+                savedTarget = WindowTarget.saved(activePage.target)
+                savedSidebar = FolderEntry.storageKey(activePage.sidebarRoot)
+            }
+            if (activeIsTerminal || activeIsSample) && layout.filled != nil {
+                layout.restore()
+            }
+            noteOpenRequests()
+            syncVariablesInspection()
+            if let window = tabController.hostWindow {
+                noteWindow(window)
+                WorkspaceTabs.markBusy(window, activePage?.page.state.isBusy ?? false)
+                tabController.syncWindowChrome(window)
+            }
+        }
+        .onChange(of: tabController.sessions.count) { _, _ in
+            noteOpenRequests()
+            if let window = tabController.hostWindow { noteWindow(window) }
+        }
+        .onChange(of: activePage?.target) { _, newPageTarget in
+            if let activePage, target != activePage.target {
+                target = newPageTarget
+            }
+            if let activePage {
+                savedTarget = WindowTarget.saved(activePage.target)
+            }
+            noteOpenRequests()
+            if let window = tabController.hostWindow { noteWindow(window) }
+        }
+        .onChange(of: activePage?.sidebarRoot) { _, newRoot in
+            guard let newRoot else { return }
+            savedSidebar = FolderEntry.storageKey(newRoot)
+            if let window = tabController.hostWindow { noteWindow(window) }
         }
         // A notebook that opens or closes in this window changes whether the
         // window is one surface with its toolbar (#892).
         .onChange(of: showsNotebook) { _, _ in
-            if let window = document.window { noteSurface(window) }
+            syncVariablesInspection()
+            if let window = tabController.hostWindow { noteSurface(window) }
+        }
+        .onChange(of: activePage?.document.dirty ?? false) { _, _ in
+            tabController.syncWindowChrome()
+        }
+        .onChange(of: activePage?.document.file) { _, _ in
+            tabController.syncWindowChrome()
+        }
+        .onChange(of: activeEditor?.document.dirty ?? false) { _, _ in
+            tabController.syncWindowChrome()
         }
         // Back from Terminal, where a kernelspec may have been installed
         // or removed: the page asks the server for its kernels again
         // (#350). A page still loading fetches them anyway.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            pageModel.refreshKernels()
+            tabController.refreshKernels()
         }
         // Brought forward after launch: restored windows can come back in
         // front of a notebook opened from the Finder (#268).
         .onChange(of: model.openRequests.front, initial: true) { _, front in
-            guard let front, front == target, let window = document.window else { return }
+            guard let front, front == target, let window = tabController.hostWindow else { return }
             bringForward(window)
         }
-        .onDisappear { model.openRequests.unregister(windowID) }
+        .onDisappear {
+            model.openRequests.unregister(windowID)
+            if let window = tabController.hostWindow {
+                tabController.detachAll(from: window)
+                WorkspaceTabs.unregisterController(tabController, for: window)
+            }
+        }
         // Notebook windows are tabs too (#247).
         .background(WindowReader { window in
-            document.attach(to: window)
+            tabController.attach(to: window)
+            WorkspaceTabs.registerController(tabController, for: window)
             // So a terminal tab can move into this panel (#248).
             panel.attach(to: window)
             WorkspaceTabs.join(window, alone: request?.alone ?? false)
             noteWindow(window)
             // A page already running when the window arrives gets its dot.
-            WorkspaceTabs.markBusy(window, pageModel.state.isBusy)
+            WorkspaceTabs.markBusy(window, activePage?.page.state.isBusy ?? false)
             // A window opened as launch ended may get its NSWindow only
             // after `front` was published.
             if let front = model.openRequests.front, front == target {
                 DispatchQueue.main.async { bringForward(window) }
             }
         })
-        .focusedSceneValue(\.pageDocument, document)
-        .focusedSceneValue(\.pageModel, pageModel)
+        .focusedSceneValue(\.pageDocument, activePage?.document)
+        .focusedSceneValue(\.pageModel, activePage?.page)
+        .focusedSceneValue(\.editorDocument, activeEditor?.document)
     }
 
     /// `macWindow` with the bottom panel and the keyboard kept in step.
@@ -331,7 +358,7 @@ struct ContentView: View {
             panel.resize(to: panelHeight, available: .infinity)
             // Shells don't outlive the app: a panel that was showing comes
             // back with a new one, as ⌃` would start.
-            if panelShown { panel.show(startingOn: windowTerminal) }
+            if panelShown { panel.show(startingOn: activeWindowTerminal) }
         }
         .onChange(of: panel.isShown) { _, shown in
             panelShown = shown
@@ -343,7 +370,7 @@ struct ContentView: View {
         // (command mode would edit cells unseen). A panel terminal that
         // has them keeps them; restoring gives them back to the notebook.
         .onChange(of: layout.filled) { _, filled in
-            guard let window = document.window else { return }
+            guard let window = tabController.hostWindow else { return }
             switch filled {
             case .panel?:
                 if !terminalHasKeyboard(in: window) { window.makeFirstResponder(nil) }
@@ -358,8 +385,8 @@ struct ContentView: View {
             }
         }
         // A dot on the tab while its kernel runs (#247).
-        .onChange(of: pageModel.state.isBusy) { _, busy in
-            if let window = document.window { WorkspaceTabs.markBusy(window, busy) }
+        .onChange(of: activePage?.page.state.isBusy ?? false) { _, busy in
+            if let window = tabController.hostWindow { WorkspaceTabs.markBusy(window, busy) }
         }
     }
     #endif
@@ -369,15 +396,15 @@ struct ContentView: View {
         // In three parts: as one expression the type checker gave up
         // (#356).
         macPanelSync
-        .focusedSceneValue(\.inspectorController, inspector)
+        .focusedSceneValue(\.inspectorController, activePage != nil ? inspector : nil)
         .modifier(InspectorAvailability(
             inspector: inspector, shows: showsNotebook, fillsWindow: layout.filled == .inspector
         ) { layout.restore() })
-        .focusedSceneValue(\.windowFill, WindowFill(filled: layout.filled) {
+        .focusedSceneValue(\.windowFill, (activeIsTerminal || activeIsSample) ? nil : WindowFill(filled: layout.filled) {
             // The area with the keyboard: a panel terminal, or the notebook.
             if layout.filled != nil {
                 layout.restore()
-            } else if panel.isShown, let window = document.window, terminalHasKeyboard(in: window) {
+            } else if panel.isShown, let window = tabController.hostWindow, terminalHasKeyboard(in: window) {
                 layout.toggle(.panel)
             } else {
                 layout.toggle(.notebook)
@@ -387,23 +414,21 @@ struct ContentView: View {
             inspector.isShown = inspectorShown
             inspector.tab = InspectorTab(rawValue: inspectorTab) ?? .outline
             inspector.resize(to: inspectorWidth, available: .infinity)
-            if inspector.wantsVariables { pageModel.run("inspect-variables", arg: "on") }
+            syncVariablesInspection()
         }
         .onChange(of: inspector.isShown) { _, shown in
             inspectorShown = shown
             layout.noteChange(of: .inspector, shown: shown)
+            syncVariablesInspection()
         }
-        .onChange(of: inspector.tab) { _, new in inspectorTab = new.rawValue }
+        .onChange(of: inspector.tab) { _, new in
+            inspectorTab = new.rawValue
+            syncVariablesInspection()
+        }
         .onChange(of: inspector.width) { _, new in inspectorWidth = new }
-        // The page reads the variables only while the inspector shows them.
-        .onChange(of: inspector.wantsVariables) { _, wants in
-            pageModel.run("inspect-variables", arg: wants ? "on" : "off")
-        }
         // A page loaded again forgets it was asked.
-        .onChange(of: pageModel.state.variables == nil) { _, none in
-            if none, inspector.wantsVariables {
-                pageModel.run("inspect-variables", arg: "on")
-            }
+        .onChange(of: activePage?.page.state.variables == nil) { _, _ in
+            tabController.ensureVariablesInspectionOnReload(wantsVariables: wantsVariables)
         }
         #else
         Group {
@@ -647,93 +672,119 @@ struct ContentView: View {
     }
 
     #if os(macOS)
+    private var activePage: PageTabState? { tabController.activePage }
+    private var activeEditor: EditorTabState? { tabController.activeEditor }
+    private var activeTerminal: TerminalTabState? { tabController.activeTerminal }
+    private var activeIsTerminal: Bool { activeTerminal != nil }
+    private var activeIsSample: Bool { tabController.activeSession?.isSample == true }
+
+    private var activePlace: Place {
+        if let activePage {
+            return activePage.place(using: { model.place(for: $0) })
+        }
+        if let machine = activeEditor?.request.machine,
+           let target = WindowTarget.machine(machine, path: "/", isFolder: true) {
+            return model.place(for: target)
+        }
+        if case .server(let id, _) = activeTerminal?.target,
+           let target = WindowTarget.machine(id.uuidString, path: "/", isFolder: true) {
+            return model.place(for: target)
+        }
+        return .thisDevice
+    }
+
+    private var activeSidebarRoot: URL {
+        activePage?.sidebarRoot
+            ?? activeEditor?.sidebarRoot
+            ?? activeTerminal?.sidebarRoot
+            ?? model.root
+    }
+
+    private var wantsVariables: Bool {
+        inspector.isShown && showsNotebook && inspector.tab == .variables
+    }
+
+    private func syncVariablesInspection() {
+        tabController.syncVariablesInspection(wantsVariables: wantsVariables)
+    }
+
+    private var isBlankWindow: Bool {
+        tabController.sessions.count == 1 && activePage != nil && activePage?.target == nil
+    }
+
     /// Only this device's windows take the Finder's open requests, and only
-    /// they count as blank (#740).
+    /// single blank page windows count as blank (#740, #904).
     private func noteOpenRequests() {
-        if place.isThisDevice {
-            model.openRequests.register(windowID, blank: target == nil)
+        if activePlace.isThisDevice && activePage != nil {
+            model.openRequests.register(windowID, blank: isBlankWindow)
         } else {
             model.openRequests.unregister(windowID)
         }
     }
 
     private func takeOpenRequests() {
-        guard place.isThisDevice else { return }
-        let (shown, others) = model.openRequests.take(blank: target == nil)
-        if let shown { show(shown) }
+        guard activePlace.isThisDevice, let activePage else { return }
+        let (shown, others) = model.openRequests.take(blank: isBlankWindow)
+        if let shown { show(shown, in: activePage) }
         for other in others {
-            WorkspaceTabs.openOrFocusTab(other) { openWindow(value: $0) }
+            WorkspaceTabs.openOrFocusTab(other, preferredWindow: tabController.hostWindow) { openWindow(value: $0) }
         }
     }
 
-    /// Shows `shown` in this window: the page loads it.
-    private func show(_ shown: WindowTarget) {
-        target = shown
-        loaded = shown
-        // Another load: the page is loaded with the place the app finds
-        // now (#883), so a check that verified its machine applies here.
-        let place = model.place(for: shown)
-        loadedPlace = place
-        pagePlace = PagePlace(place: place, root: model.thisMacRoot(for: place)?.path)
-        sidebarRoot = shown.folder
+    /// Shows `shown` in `pageTab`: the page loads it.
+    private func show(_ shown: WindowTarget, in pageTab: PageTabState) {
+        pageTab.show(
+            shown,
+            placeResolver: { model.place(for: $0) },
+            thisMacRoot: { model.thisMacRoot(for: $0) }
+        )
+        if pageTab.id == tabController.selectedID {
+            target = shown
+        }
     }
 
     /// The sidebar's folder as this window last had it, if it was saved.
     /// Only a location of this window's own place.
-    private func restoreSidebar() {
+    private func restoreSidebar(in pageTab: PageTabState) {
+        let tabPlace = pageTab.place(using: { model.place(for: $0) })
         guard let saved = FolderEntry.location(storageKey: savedSidebar),
-              FolderEntry.isLocation(saved, in: place)
+              FolderEntry.isLocation(saved, in: tabPlace)
         else { return }
-        sidebarRoot = saved
-    }
-
-    /// What the app says this window's place is now (#883).
-    private var currentPlace: Place { model.place(for: loaded) }
-
-    /// The place this window is (#883): the one its page was loaded with,
-    /// upgraded to this Mac's own on its next load, and downgraded at once
-    /// when the check stops verifying the server — in place, without the
-    /// web view being made again, so the page keeps its unsaved edits.
-    private var place: Place { Place.window(loaded: loadedPlace, current: currentPlace) }
-
-    /// The page loaded (#883): its place is read again, so a check that
-    /// verified the window's machine applies on this load. The web view's
-    /// identity follows it, which is a load's business (a page loading
-    /// again, another page, another window), never a downgrade's: that is
-    /// taken in place, and this runs only after a load committed.
-    private func readPlace() {
-        let now = currentPlace
-        if loadedPlace != now { loadedPlace = now }
-        let made = PagePlace(place: now, root: model.thisMacRoot(for: now)?.path)
-        if pagePlace != made { pagePlace = made }
+        pageTab.sidebarRoot = saved
     }
 
     /// What a new terminal in this window runs on (#858), as File > New
-    /// Terminal and the panel's + ask: the place decides, from the folder of
-    /// the notebook the window shows, else the folder the window is on. Nil
-    /// for a machine whose remote was removed or has no server.
-    private var windowTerminal: TerminalTarget? {
-        WindowScope(place: place, serverFolder: FolderEntry.serverPath(sidebarRoot))
-            .terminalTarget(notebook: pageModel.state.path, remotes: model.remotes)
+    /// Terminal and the panel's + ask.
+    private var activeWindowTerminal: TerminalTarget? {
+        if let activePage {
+            return activePage.windowTerminal(place: activePlace, remotes: model.remotes)
+        }
+        if let activeEditor {
+            return WindowScope(place: activePlace, serverFolder: FolderEntry.serverPath(activeEditor.sidebarRoot))
+                .terminalTarget(notebook: nil, remotes: model.remotes)
+        }
+        if let activeTerminal {
+            return activeTerminal.target
+        }
+        return nil
     }
 
     /// A machine's name, for its window's title and subtitle.
-    private var machineName: String? { place.machineID.flatMap(model.machineName(_:)) }
+    private var activeMachineName: String? {
+        activePlace.machineID.flatMap(model.machineName(_:))
+    }
 
     /// The notebook's status line (#812): where it is saved and runs, from
     /// the window's place and the kernel location setting, not the page's
     /// own words; nil with no notebook open.
-    private var headerStatus: HeaderStatus? {
-        let names = HeaderStatus.places(
-            place: place, machineName: machineName, deviceName: Places.deviceName,
-            locations: model.kernelLocations, kernel: pageModel.state.kernel)
-        return HeaderStatus.make(state: pageModel.state, savedOn: names.savedOn, runsOn: names.runsOn)
+    private var activeHeaderStatus: HeaderStatus? {
+        activePage?.headerStatus(place: activePlace, machineName: activeMachineName, locations: model.kernelLocations)
     }
 
     /// This window's files: this Mac's disk, or the machine's through the
     /// app's mount. Nil for a machine until the server listens.
     private var fileSource: (any FileSource)? {
-        guard let id = place.machineID else { return LocalFileSource() }
+        guard let id = activePlace.machineID else { return LocalFileSource() }
         return model.serverURL.map { MachineFileSource(id: id, server: $0) }
     }
 
@@ -741,16 +792,21 @@ struct ContentView: View {
         Group {
             if let source = fileSource {
                 NavigatorSidebar(
-                    folder: sidebarRoot, source: source, place: place, page: pageModel,
-                    panel: panel,
+                    folder: activeSidebarRoot,
+                    source: source,
+                    place: activePlace,
+                    page: activePage?.page,
+                    panel: (activeIsTerminal || activeIsSample) ? nil : panel,
                     // The column the sidebar's keys bring back (#879): the
                     // window folds it, or an area fills over it.
                     showSidebar: {
                         layout.restore()
                         sidebarShown = true
-                    }
+                    },
+                    onOpenNotebook: openNotebookFromSidebar,
+                    onNewNotebook: newNotebookFromSidebar
                 ) { path in
-                    openWindow(value: EditorRequest(path: path, place: place))
+                    openFile(path, in: activePlace)
                 }
                 // Tint the system's sidebar glass directly (#896) rather than
                 // laying `.background(Color("SidebarTint").ignoresSafeArea())`
@@ -759,26 +815,155 @@ struct ContentView: View {
                 // `NSScrollPocket` on macOS 27. The lists hide their own
                 // background so the tinted glass shows behind their rows.
                 .background(SidebarGlassTint())
-                // A restarted server has a new address and token.
-                .id(place.isMachine ? model.serverURL : nil)
+                // A restarted server has a new address and token, and switching
+                // between machines resets machine-scoped navigator state.
+                .id(activePlace.isMachine ? "\(activePlace.mountPath)|\(model.serverURL?.absoluteString ?? "")" : nil)
             } else {
                 ProgressView()
             }
         }
     }
 
+    private var tabNewMenuItems: TabNewMenuItems {
+        let machines = model.places.filter { $0.place.isMachine }
+        return TabNewMenuItems(
+            machines: machines,
+            onNewNotebook: {
+                let nextTarget = WindowTarget.newTab(place: activePlace, folder: activeSidebarRoot, root: model.root)
+                let nextPlace = model.place(for: nextTarget)
+                let nextMachine = nextPlace.machineID.flatMap(model.machineName(_:))
+                tabController.addPageTab(
+                    target: nextTarget,
+                    place: nextPlace,
+                    machineName: nextMachine,
+                    thisMacRoot: model.thisMacRoot(for: nextPlace)?.path,
+                    reuseExisting: false
+                )
+            },
+            onNewConsole: {
+                let localFolder = activePlace.isThisDevice ? activeSidebarRoot : model.root
+                let consoleTarget = WindowTarget.console(folder: localFolder, id: UUID())
+                tabController.addPageTab(
+                    target: consoleTarget,
+                    place: .thisDevice,
+                    machineName: nil,
+                    reuseExisting: false
+                )
+            },
+            onNewTerminal: {
+                let terminalTarget = activeWindowTerminal ?? .local(folder: activePlace.isThisDevice ? activeSidebarRoot : model.root)
+                tabController.addTerminalTab(target: terminalTarget, sidebarRoot: activeSidebarRoot)
+            },
+            onOpenMachine: { entry in
+                guard let machineTarget = WindowTarget.root(of: entry.place, device: model.root) else { return }
+                tabController.addPageTab(
+                    target: machineTarget,
+                    place: entry.place,
+                    machineName: entry.title,
+                    thisMacRoot: model.thisMacRoot(for: entry.place)?.path,
+                    reuseExisting: true
+                )
+            }
+        )
+    }
+
+    private func openNotebookFromSidebar(_ serverPath: String) {
+        let target: WindowTarget?
+        if let id = activePlace.machineID {
+            target = WindowTarget.machine(id, path: serverPath, isFolder: false)
+        } else {
+            let path = "/" + serverPath.drop { $0 == "/" }
+            target = WindowTarget(opening: URL(fileURLWithPath: path))
+        }
+        guard let target else { return }
+        let resolvedPlace = model.place(for: target)
+        let resolvedMachine = resolvedPlace.machineID.flatMap(model.machineName(_:))
+        tabController.addPageTab(
+            target: target,
+            place: resolvedPlace,
+            machineName: resolvedMachine,
+            thisMacRoot: model.thisMacRoot(for: resolvedPlace)?.path,
+            reuseExisting: true
+        )
+    }
+
+    private func newNotebookFromSidebar(_ serverPath: String) {
+        let nextTarget = WindowTarget.newTab(place: activePlace, folder: activeSidebarRoot, root: model.root)
+        let resolvedPlace = model.place(for: nextTarget)
+        let resolvedMachine = resolvedPlace.machineID.flatMap(model.machineName(_:))
+        let id = tabController.addPageTab(
+            target: nextTarget,
+            place: resolvedPlace,
+            machineName: resolvedMachine,
+            thisMacRoot: model.thisMacRoot(for: resolvedPlace)?.path,
+            reuseExisting: false
+        )
+        if let page = tabController.sessions.first(where: { $0.id == id })?.pageTab?.page {
+            page.run("new-notebook", arg: serverPath)
+        }
+    }
+
+    private func openFile(_ path: String, in place: Place) {
+        let request = EditorRequest(path: path, place: place)
+        WorkspaceTabs.openEditor(request, preferredWindow: tabController.hostWindow) {
+            openWindow(value: $0)
+        }
+    }
+
+    private func canMoveTerminalToPanel(_ terminalTab: TerminalTabState) -> Bool {
+        guard terminalTab.canMoveToPanel, TerminalHandoff.shared.canMove(terminalTab.handoffID) else {
+            return false
+        }
+        if tabController.sessions.count > 1 { return true }
+        if let window = tabController.hostWindow {
+            return PanelController.nearest(to: window) != nil
+        }
+        return false
+    }
+
+    private func moveTerminalTabToPanel(_ terminalTab: TerminalTabState) {
+        let handoff = terminalTab.handoffID
+        if tabController.sessions.count > 1 {
+            let terminal = PanelTerminal(id: handoff, target: terminalTab.target)
+            let panel = self.panel
+            let moving = TerminalHandoff.shared.move(handoff) {
+                panel.adopt(terminal)
+            }
+            guard moving else { NSSound.beep(); return }
+            _ = tabController.removeSession(terminalTab.id)
+            return
+        }
+        guard let window = tabController.hostWindow,
+              let nearest = PanelController.nearest(to: window)
+        else {
+            NSSound.beep()
+            return
+        }
+        let terminal = PanelTerminal(id: handoff, target: terminalTab.target)
+        let targetPanel = nearest.panel
+        let moving = TerminalHandoff.shared.move(handoff) { [weak host = nearest.window] in
+            targetPanel.adopt(terminal)
+            host?.makeKeyAndOrderFront(nil)
+        }
+        guard moving else { NSSound.beep(); return }
+        window.performClose(nil)
+    }
+
     /// Its folder, and whether it shows the start screen (no notebook),
     /// for the window that opens after the last one closes (#416).
     private func noteWindow(_ window: NSWindow) {
-        let shown = target ?? loaded
-        var start = true
-        switch shown {
-        case .file, .console, .machineFile: start = false
-        default: break
+        let shown = activePage?.effectiveTarget
+        var start = false
+        if tabController.sessions.count == 1, let shown {
+            start = true
+            switch shown {
+            case .file, .console, .machineFile: start = false
+            default: break
+            }
         }
         // A machine's folder is no folder for a start window on this Mac.
         WorkspaceTabs.note(
-            window, target: shown, folder: place.isThisDevice ? sidebarRoot : nil, start: start)
+            window, target: shown, folder: activePlace.isThisDevice ? activeSidebarRoot : nil, start: start)
         noteSurface(window)
     }
 
@@ -813,36 +998,62 @@ struct ContentView: View {
         model.openRequests.broughtForward()
     }
 
-    private var page: URL? { model.page(for: loaded) }
-
-    /// Whether this tab shows a notebook, which the inspector is for
-    /// (#729): not a console, a data file or the start screen.
+    /// Whether the active tab shows a notebook, which the inspector is for
+    /// (#729): not a console, a data file, an editor, a terminal, or the start screen.
     private var showsNotebook: Bool {
-        InspectorController.showsNotebook(
-            state: pageModel.state, pageReported: pageModel.ready, target: target ?? loaded
-        )
+        activePage?.showsNotebook ?? false
     }
 
-    /// What the window and its tab are called: a console by its name
-    /// (#735), a notebook by its `metadata.title` or its file's, the rest
-    /// by their folder's (#867).
-    private var windowTitle: String {
-        (target ?? loaded).tabTitle(
-            consoleName: pageModel.state.console?.name, machineName: machineName,
-            metadataTitle: shownTitle)
+    /// What the window and its tab are called.
+    private var activeWindowTitle: String {
+        if let activePage {
+            return activePage.windowTitle(machineName: activeMachineName)
+        }
+        if let activeEditor {
+            return activeEditor.windowTitle(machineName: activeMachineName)
+        }
+        if let activeTerminal {
+            return activeTerminal.windowTitle(defaultTitle: model.title(for: activeTerminal.target))
+        }
+        return tabController.activeSession?.descriptor.title ?? "Ganymede"
     }
 
-    /// The page's `metadata.title`, once the page reports the file this
-    /// window is for (#871).
-    private var shownTitle: String? {
-        WindowTarget.shownTitle(
-            target: target ?? loaded, pagePath: pageModel.state.path, metadataTitle: pageModel.state.title)
+    private var activeSubtitle: String {
+        guard activePage != nil else { return "" }
+        return showsNotebook ? "" : WindowTarget.subtitle(header: activeHeaderStatus, machineName: activeMachineName)
+    }
+
+    private var activeToolbarMode: WorkspaceToolbar.Mode {
+        switch tabController.activeSession?.payload {
+        case .page(let tab):
+            return .page(
+                page: tab.page,
+                document: tab.document,
+                panel: activePlace.isThisDevice ? panel : nil,
+                place: activePlace,
+                header: activeHeaderStatus,
+                title: showsNotebook ? activeWindowTitle : nil,
+                inspectorShown: showsNotebook ? inspector.isShown : nil,
+                toggleInspector: { inspector.toggle() },
+                panelShown: panel.isShown,
+                toggleTerminalPanel: { panel.toggle(startingOn: activeWindowTerminal) }
+            )
+        case .editor(let tab):
+            return .editor(document: tab.document)
+        case .terminal(let tab):
+            return .terminal(canMoveToPanel: canMoveTerminalToPanel(tab)) {
+                moveTerminalTabToPanel(tab)
+            }
+        case .sampleConsole, .sampleMachine, .sampleTerminal, nil:
+            return .sample
+        }
     }
 
     /// The page asks for a tab (`openTab`): a notebook or data file, or a
     /// new DuckDB console. The server is rooted at `/` on the Mac.
     private func openTab(_ request: TabRequest) {
-        WorkspaceTabs.openOrFocusTab(request.target(root: model.serverRootFolder)) {
+        let nextTarget = request.target(root: model.serverRootFolder)
+        WorkspaceTabs.openOrFocusTab(nextTarget, preferredWindow: tabController.hostWindow) {
             openWindow(value: $0)
         }
     }
@@ -850,9 +1061,9 @@ struct ContentView: View {
     /// Why this window's loopback server wasn't trusted as This Mac (#887);
     /// nil for non-loopback servers, this device, and windows upgraded to
     /// This Mac.
-    private var thisMacNotice: String? { model.thisMacNotice(for: place) }
+    private var thisMacNotice: String? { model.thisMacNotice(for: activePlace) }
 
-    /// The notebook, with the bottom panel under it (#248), and the status
+    /// The active tab content, with the bottom panel under it (#248), and the status
     /// bar under the workspace (#882). The panel stays in the view tree
     /// while hidden, so its terminals keep running.
     private var workspace: some View {
@@ -873,16 +1084,16 @@ struct ContentView: View {
                             .opacity(layout.filled == .inspector ? 0 : 1)
                             .allowsHitTesting(layout.filled != .inspector)
                             .accessibilityHidden(layout.filled == .inspector)
-                        if layout.filled == .inspector {
+                        if layout.filled == .inspector, let activePage {
                             Inspector(
-                                inspector: inspector, page: pageModel, available: whole.size.width,
+                                inspector: inspector, page: activePage.page, available: whole.size.width,
                                 fills: true, toggleFill: { layout.toggle(.inspector) }
                             )
                         }
                     }
-                    if layout.filled == nil, inspector.isShown, showsNotebook {
+                    if layout.filled == nil, inspector.isShown, showsNotebook, let activePage {
                         Inspector(
-                            inspector: inspector, page: pageModel, available: whole.size.width,
+                            inspector: inspector, page: activePage.page, available: whole.size.width,
                             fills: false, toggleFill: { layout.toggle(.inspector) }
                         )
                     } else if layout.folds(.inspector), showsNotebook {
@@ -899,11 +1110,15 @@ struct ContentView: View {
                     }
                 }
                 if statusBarShown {
+                    let activeBar = StatusBarContent.showsContent(
+                        barShown: statusBarShown, showsNotebook: showsNotebook, filled: layout.filled)
+                    let barContent = activePage.map {
+                        StatusBarContent.make(header: activeHeaderStatus, state: $0.page.state)
+                    } ?? StatusBarContent()
                     StatusBar(
-                        active: StatusBarContent.showsContent(
-                            barShown: statusBarShown, showsNotebook: showsNotebook, filled: layout.filled),
-                        content: StatusBarContent.make(header: headerStatus, state: pageModel.state),
-                        page: pageModel
+                        active: activeBar,
+                        content: barContent,
+                        page: activePage?.page
                     )
                 }
             }
@@ -914,7 +1129,7 @@ struct ContentView: View {
     /// window (#250, #867): the window's own, so a notebook the page
     /// titled says that, not its file's name.
     private var notebookTitle: String {
-        (target ?? loaded).displayTitle(machineName: machineName, metadataTitle: pageModel.state.title)
+        activePage?.notebookTitle(machineName: activeMachineName) ?? activeWindowTitle
     }
 
     /// The leading strip while an area fills the window: the sidebar, and
@@ -936,13 +1151,20 @@ struct ContentView: View {
         return items
     }
 
-    /// The notebook, with the bottom panel under it.
+    /// The unified tab host ZStack, with the bottom panel under it.
     private var notebookAndPanel: some View {
         GeometryReader { area in
-            let panelShows = layout.shows(.panel, normally: panel.isShown)
-            let panelFills = layout.filled == .panel
+            let showsPanel = !activeIsTerminal && !activeIsSample
+            let panelShows = showsPanel && layout.shows(.panel, normally: panel.isShown)
+            let panelFills = showsPanel && layout.filled == .panel
             VStack(spacing: 0) {
-                content
+                WorkspaceTabHost(
+                    enabled: customTabStrip,
+                    samples: customTabSamples,
+                    controller: tabController,
+                    onOpenFile: openFile,
+                    onOpenTabRequest: openTab
+                )
                     .frame(maxHeight: panelFills ? FoldedStrip.thickness : .infinity)
                     .overlay {
                         if panelFills {
@@ -955,15 +1177,23 @@ struct ContentView: View {
                     }
                 BottomPanel(
                     panel: panel,
-                    newTerminal: windowTerminal,
+                    newTerminal: activeWindowTerminal,
                     available: area.size.height,
-                    kernelID: pageModel.state.kernelID,
+                    kernelID: activePage?.page.state.kernelID,
                     server: model.serverURL.flatMap(ServerEndpoint.init(serverURL:)),
                     // A machine's kernel is the machine's, whose log this
                     // Mac's server doesn't keep (#858).
-                    kernelLog: place.isThisDevice,
+                    kernelLog: activePlace.isThisDevice,
+                    shown: panelShows,
                     fills: panelFills,
-                    toggleFill: { layout.toggle(.panel) }
+                    toggleFill: { layout.toggle(.panel) },
+                    onMoveToTab: customTabStrip ? { request in
+                        tabController.addTerminalTab(
+                            target: request.target,
+                            handoffID: request.id,
+                            sidebarRoot: activeSidebarRoot
+                        )
+                    } : nil
                 )
                     // Top-aligned, so a hidden panel's views (AppKit cursor
                     // rects included) sit below the window, not over the notebook.
@@ -972,42 +1202,18 @@ struct ContentView: View {
                     .opacity(panelShows ? 1 : 0)
                     .allowsHitTesting(panelShows)
                     .accessibilityHidden(!panelShows)
-                if layout.filled == .notebook {
+                if showsPanel && layout.filled == .notebook {
                     Divider()
                     FoldedStrip(
                         items: [.init(title: "Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled") {
                             layout.restore()
-                            panel.show(startingOn: windowTerminal)
+                            panel.show(startingOn: activeWindowTerminal)
                         }],
                         axis: .horizontal
                     )
                 }
             }
         }
-    }
-
-    /// The page opened another notebook, closed it, or moved to another
-    /// folder (#220): the window now shows that, for its title, the
-    /// folder restored on relaunch and the Finder's later opens. The page
-    /// stays as it is.
-    private func follow(_ url: URL?) {
-        guard let url else { return }
-        let shown = WindowTarget(page: url)
-        // Not the app's own load of `loaded`, which this KVO also reports:
-        // only the page moving elsewhere.
-        if shown?.url.standardizedFileURL.path != loaded.url.standardizedFileURL.path {
-            pageReported = true
-        }
-        // A page can't turn itself into another place's window (#701). A
-        // machine the app checked is this Mac's own (#883) is that place
-        // here, though the page names it as a machine.
-        guard let shown, model.place(for: shown) == place else { return }
-        // A console's page reports its folder, not the tab's own id.
-        if let target, target.shows(shown) { return }
-        // A window opened on nothing stays blank on the folder it loaded,
-        // so it can still take the Finder's files at launch (#228).
-        if target == nil, case .folder = shown, shown.url.path == loaded.url.path { return }
-        target = shown
     }
     #else
     /// The page this scene loads: the app's own, or the machine's (#701),
@@ -1556,38 +1762,14 @@ struct ContentView: View {
         model.usesDevice(for: place)
     }
 
-    /// What a window's page is made for (#883): its place, and the folder a
-    /// this-Mac server is rooted at, whose notebooks its ledger keeps. A
-    /// server restarted with another `root_dir` keeps notebooks by other
-    /// paths, so the page is made again for it.
-    private struct PagePlace: Hashable {
-        var place: Place
-        var root: String?
-    }
-
     /// The folder a window of `place`'s page paths are from (#883): this
     /// Mac's own server's `root_dir`, else the app server's root.
+    #if os(iOS)
     private var pageRoot: PageRoot { model.pageRoot(for: place) }
 
     private var content: some View {
         Group {
             if let url = page {
-                #if os(macOS)
-                WebView(
-                    url: url, onNavigate: follow, document: document, page: pageModel,
-                    onOpenTab: openTab,
-                    onOpenFile: { path in
-                        openWindow(value: EditorRequest(path: path, place: place))
-                    },
-                    place: place, sharesName: sharesName(for: place), usesDevice: usesDevice(for: place),
-                    pageRoot: pageRoot,
-                    onLoad: readPlace
-                )
-                // A page loaded for another place, or for a server rooted
-                // elsewhere, gets its own handlers. A downgrade keeps the
-                // one it has (#883): its handlers go in place instead.
-                .id(pagePlace)
-                #else
                 // A page loaded for another place gets its own handlers: this
                 // device's page is not a machine's (#758).
                 WebView(
@@ -1596,7 +1778,6 @@ struct ContentView: View {
                     pageRoot: pageRoot
                 )
                 .id(place)
-                #endif
             } else if model.error != nil {
                 startProblem
             } else {
@@ -1608,17 +1789,8 @@ struct ContentView: View {
         // upgrades the window on its next load and downgrades it at once
         // (#883).
         .onAppear { model.refreshThisMac() }
-        #if os(macOS)
-        .onChange(of: currentPlace) { _, now in
-            // A downgrade is kept, so a check that verifies the server
-            // again waits for the next load to apply (#883): the web view
-            // took the downgrade in place, and an upgrade is a load's.
-            guard let held = loadedPlace, held.isThisMac, !now.isThisMac else { return }
-            loadedPlace = now
-        }
-        .modifier(KeychainAlert(model: model))
-        #endif
     }
+    #endif
 
     /// The server didn't start, and why, with Try Again.
     @ViewBuilder
@@ -1674,18 +1846,16 @@ private struct KeychainAlert: ViewModifier {
 private struct WindowSceneValues: ViewModifier {
     var place: Place
     var folder: URL
-    var panel: PanelController
+    var panel: PanelController?
+    var enabled: Bool = true
 
     func body(content: Content) -> some View {
-        let scope = WindowScope(place: place, serverFolder: FolderEntry.serverPath(folder))
-        let window = content
+        let scope = enabled ? WindowScope(place: place, serverFolder: FolderEntry.serverPath(folder)) : nil
+        let windowFolder: URL? = (enabled && place.isThisDevice) ? folder : nil
+        content
             .focusedSceneValue(\.panelController, panel)
             .focusedSceneValue(\.windowScope, scope)
-        if place.isThisDevice {
-            window.focusedSceneValue(\.windowFolder, folder)
-        } else {
-            window
-        }
+            .focusedSceneValue(\.windowFolder, windowFolder)
     }
 }
 

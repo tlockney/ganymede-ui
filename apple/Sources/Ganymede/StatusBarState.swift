@@ -69,3 +69,26 @@ struct MemoryWatcher: Equatable {
         if let changed = set(visible) { watch(changed) }
     }
 }
+
+/// Tracks a view's `watchMemory` subscription across both visibility changes
+/// and active `PageModel` switches (#904): switching from one page to another
+/// while visible ends the watch on the deactivated page before starting it on
+/// the newly active page.
+@MainActor
+struct PageMemoryWatcher {
+    private var watcher = MemoryWatcher()
+    private(set) weak var watchedPage: PageModel?
+
+    var isWatching: Bool { watcher.isWatching }
+
+    mutating func update(page: PageModel?, visible: Bool) {
+        if watchedPage !== page {
+            if watcher.set(false) != nil {
+                watchedPage?.watchMemory(false)
+            }
+            watchedPage = page
+        }
+        guard let page else { return }
+        watcher.update(visible: visible) { page.watchMemory($0) }
+    }
+}

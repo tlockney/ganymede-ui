@@ -40,16 +40,31 @@ final class EditorDocument {
     /// restarted server's new address and token are picked up; the file's
     /// own server comes from it (`EditorRequest.endpoint(local:)`).
     @ObservationIgnored private let local: @MainActor () -> ServerEndpoint?
+    @ObservationIgnored private let errorMessage: @MainActor (Error) -> String
     #if os(macOS)
-    @ObservationIgnored private weak var window: NSWindow?
+    @ObservationIgnored private(set) weak var window: NSWindow?
+    @ObservationIgnored weak var textView: NSTextView?
+    /// Background tabs stay attached to `window` for quit tracking while only
+    /// the active tab drives `window.isDocumentEdited` and `window.representedURL` (#904).
+    @ObservationIgnored var isActiveInWindow = true {
+        didSet {
+            guard isActiveInWindow != oldValue else { return }
+            if isActiveInWindow { syncWindow() }
+        }
+    }
     @ObservationIgnored private var closeGuard: EditorCloseGuard?
     /// Every open editor, for the prompt on quit.
     private static let all = NSHashTable<EditorDocument>.weakObjects()
     #endif
 
-    init(_ request: EditorRequest, local: @escaping @MainActor () -> ServerEndpoint?) {
+    init(
+        _ request: EditorRequest,
+        local: @escaping @MainActor () -> ServerEndpoint?,
+        errorMessage: @escaping @MainActor (Error) -> String = { $0.localizedDescription }
+    ) {
         self.request = request
         self.local = local
+        self.errorMessage = errorMessage
         #if os(macOS)
         Self.all.add(self)
         #endif
@@ -114,7 +129,7 @@ final class EditorDocument {
             take(snapshot)
             problem = nil
         } catch {
-            problem = message(for: error)
+            problem = errorMessage(error)
             failedSave = false
         }
     }
@@ -167,7 +182,7 @@ final class EditorDocument {
             changedOnDisk = true
             return false
         } catch {
-            problem = "The file could not be saved: " + message(for: error)
+            problem = "The file could not be saved: " + errorMessage(error)
             failedSave = true
             return false
         }
@@ -204,23 +219,45 @@ final class EditorDocument {
 
     #if os(macOS)
     /// The window this file is shown in: its edited dot, and a prompt
-    /// before it closes with unsaved edits.
-    func attach(to window: NSWindow) {
-        guard self.window !== window else { return }
-        self.window = window
-        let closeGuard = EditorCloseGuard(document: self, original: window.delegate)
-        window.delegate = closeGuard
-        self.closeGuard = closeGuard
-        // The proxy icon. The Mac's server is rooted at `/`; a machine's
-        // file is no file of this Mac's (#855).
-        if machine == nil {
-            window.representedURL = URL(fileURLWithPath: "/" + path)
+    /// before it closes with unsaved edits when `installCloseGuard` is true.
+    func attach(to window: NSWindow, installCloseGuard: Bool = true) {
+        var changed = false
+        if self.window !== window {
+            self.window = window
+            changed = true
         }
-        syncWindow()
+        if installCloseGuard, closeGuard == nil {
+            let closeGuard = EditorCloseGuard(document: self, original: window.delegate)
+            window.delegate = closeGuard
+            self.closeGuard = closeGuard
+            changed = true
+        }
+        if changed {
+            syncWindow()
+        }
     }
 
-    private func syncWindow() {
-        window?.isDocumentEdited = dirty
+    /// Detaches this document when its tab is removed or closed so it no longer
+    /// affects quit prompts for the old window.
+    func detach(from window: NSWindow) {
+        guard self.window === window else { return }
+        self.window = nil
+        isActiveInWindow = false
+    }
+
+    func syncWindow() {
+        guard isActiveInWindow, let window else { return }
+        if window.isDocumentEdited != dirty {
+            window.isDocumentEdited = dirty
+        }
+        // The proxy icon. The Mac's server is rooted at `/`; a machine's
+        // file is no file of this Mac's (#855).
+        let represented: URL? = machine == nil
+            ? URL(fileURLWithPath: path.hasPrefix("/") ? path : "/" + path)
+            : nil
+        if window.representedURL != represented {
+            window.representedURL = represented
+        }
     }
 
     func confirmClose(_ window: NSWindow) {
@@ -259,7 +296,10 @@ final class EditorDocument {
             for document in unsaved {
                 let saved = await document.save()
                 if !saved {
-                    document.window?.makeKeyAndOrderFront(nil)
+                    if let window = document.window {
+                        WorkspaceTabs.select(editorDocument: document, in: window)
+                        window.makeKeyAndOrderFront(nil)
+                    }
                     return false
                 }
             }

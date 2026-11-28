@@ -20,7 +20,9 @@ struct FolderSidebar: View {
     var place: Place = .thisDevice
     /// The machine's name for words about it, when the window is a machine's.
     var machineName: String?
-    var page: PageModel
+    var page: PageModel?
+    var onOpenNotebook: (String) -> Void = { _ in }
+    var onNewNotebook: (String) -> Void = { _ in }
     let openFile: (String) -> Void
     @Environment(\.openWindow) private var openWindow
     /// Bumped to list the folders again after a change made here.
@@ -63,8 +65,15 @@ struct FolderSidebar: View {
             select: { selection = $0 }
         ))
         .contextMenu {
-            Button("New Notebook") { page.run("new-notebook", arg: source.serverPath(folder)) }
-                .disabled(!reachable)
+            Button("New Notebook") {
+                let serverFolder = source.serverPath(folder)
+                if let page {
+                    page.run("new-notebook", arg: serverFolder)
+                } else {
+                    onNewNotebook(serverFolder)
+                }
+            }
+            .disabled(!reachable)
             Button("New Folder") { newFolder(in: folder) }
                 .disabled(!canChange)
         }
@@ -77,7 +86,7 @@ struct FolderSidebar: View {
         }
         // A notebook made or saved by the page shows up, and so do changes
         // made outside the app when it comes back to the front.
-        .onChange(of: page.state.path) { old, _ in
+        .onChange(of: page?.state.path) { old, _ in
             generation += 1
             // The page renamed or moved the open notebook: the row
             // selected under its old path is gone.
@@ -103,8 +112,8 @@ struct FolderSidebar: View {
 
     private var actions: FolderActions {
         FolderActions(
-            openPath: page.state.path,
-            isRunning: { page.state.isRunning($0) },
+            openPath: page?.state.path,
+            isRunning: { page?.state.isRunning($0) ?? false },
             isExpanded: { url in
                 // A path for this device (as stored before), the whole URL
                 // for a machine's.
@@ -132,7 +141,14 @@ struct FolderSidebar: View {
                     WorkspaceTabs.openOrFocusTab(target) { openWindow(value: $0) }
                 }
             },
-            newNotebook: { page.run("new-notebook", arg: source.serverPath($0)) },
+            newNotebook: { url in
+                let serverFolder = source.serverPath(url)
+                if let page {
+                    page.run("new-notebook", arg: serverFolder)
+                } else {
+                    onNewNotebook(serverFolder)
+                }
+            },
             newFolder: newFolder(in:),
             reveal: { NSWorkspace.shared.activateFileViewerSelecting([$0.url]) },
             rename: rename,
@@ -161,7 +177,11 @@ struct FolderSidebar: View {
     private func open(_ entry: FolderEntry) {
         if entry.opensInPage {
             WorkspaceTabs.openOrFocus(
-                WindowTarget(opening: entry), serverPath: entry.serverPath, in: page)
+                WindowTarget(opening: entry),
+                serverPath: entry.serverPath,
+                in: page,
+                fallback: onOpenNotebook
+            )
         } else if entry.canOpen(in: place) {
             openFile(entry.serverPath)
         }
@@ -195,13 +215,14 @@ struct FolderSidebar: View {
     private func rename(_ entry: FolderEntry) {
         // The open notebook renames through the page, which saves its
         // edits first and keeps its kernel.
-        if entry.isNotebook, page.state.path == entry.serverPath {
+        if let page, entry.isNotebook, page.state.path == entry.serverPath {
             if let name = askName(for: entry.name) { page.run("rename", arg: name) }
             return
         }
-        let holdsOpen = FolderEntry.path(page.state.path, isAt: entry.serverPath)
+        let openPath = page?.state.path
+        let holdsOpen = FolderEntry.path(openPath, isAt: entry.serverPath)
         // The page would save its edits back to the old path.
-        if holdsOpen && page.state.dirty {
+        if holdsOpen && (page?.state.dirty == true) {
             let alert = NSAlert()
             alert.messageText = "Save “\(entry.title)” before renaming its folder."
             alert.informativeText = "The open notebook has unsaved changes."
@@ -216,7 +237,7 @@ struct FolderSidebar: View {
                 // Its row, and any inside it, is gone under the old name.
                 dropSelection(at: entry)
                 // From the page's path now, after the move returned.
-                if let moved = FolderEntry.path(
+                if let page, let moved = FolderEntry.path(
                     page.state.path, movedFrom: entry.serverPath, to: source.serverPath(target)
                 ) {
                     page.run("open", arg: moved)
@@ -241,9 +262,9 @@ struct FolderSidebar: View {
     private func trash(_ entry: FolderEntry) {
         // The page would write the notebook back on its next save, so it
         // closes it, after asking. A machine deletes for good: always ask.
-        let holdsOpen = FolderEntry.path(page.state.path, isAt: entry.serverPath)
+        let holdsOpen = FolderEntry.path(page?.state.path, isAt: entry.serverPath)
         let action = RemoveAction(place: place)
-        if let question = action.question(for: entry, holdsOpen: holdsOpen, dirty: page.state.dirty) {
+        if let question = action.question(for: entry, holdsOpen: holdsOpen, dirty: page?.state.dirty == true) {
             let alert = NSAlert()
             alert.messageText = question.message
             alert.informativeText = question.detail
@@ -258,7 +279,7 @@ struct FolderSidebar: View {
                 generation += 1
                 dropSelection(at: entry)
                 // What the page shows now, not when the person confirmed.
-                if FolderEntry.path(page.state.path, isAt: entry.serverPath) { page.run("close") }
+                if let page, FolderEntry.path(page.state.path, isAt: entry.serverPath) { page.run("close") }
             } catch {
                 show(error)
             }
@@ -427,17 +448,20 @@ private struct FolderContents: View {
 /// opened, to find and shut down (#225): the navigator's Running tab (#246).
 struct RunningList: View {
     var place: Place = .thisDevice
-    var page: PageModel
+    var page: PageModel?
+    var onOpenNotebook: (String) -> Void = { _ in }
     /// Terminals in any window (#246).
     var terminals = OpenTerminals.shared
+    @State private var watcher = PageMemoryWatcher()
 
     var body: some View {
+        let sessions = page?.state.sessions ?? []
         List {
             Section("Kernels") {
-                ForEach(page.state.sessions) { session in
-                    KernelRow(session: session, place: place, page: page)
+                ForEach(sessions) { session in
+                    KernelRow(session: session, place: place, page: page, onOpenNotebook: onOpenNotebook)
                 }
-                if page.state.sessions.isEmpty {
+                if sessions.isEmpty {
                     Text("No kernels running").foregroundStyle(SidebarCaption())
                 }
             }
@@ -470,8 +494,11 @@ struct RunningList: View {
         .scrollContentBackground(.hidden)
         // The page asks the server for each kernel's memory only while
         // the list shows (#241).
-        .onAppear { page.watchMemory(true) }
-        .onDisappear { page.watchMemory(false) }
+        .onAppear { watcher.update(page: page, visible: true) }
+        .onChange(of: page.map(ObjectIdentifier.init)) { _, _ in
+            watcher.update(page: page, visible: true)
+        }
+        .onDisappear { watcher.update(page: nil, visible: false) }
     }
 }
 
@@ -479,7 +506,8 @@ struct RunningList: View {
 private struct KernelRow: View {
     let session: PageState.Session
     var place: Place = .thisDevice
-    var page: PageModel
+    var page: PageModel?
+    var onOpenNotebook: (String) -> Void
 
     var body: some View {
         Button {
@@ -505,7 +533,8 @@ private struct KernelRow: View {
         .contextMenu {
             Button("Open") { open() }
             Divider()
-            Button("Shut Down Kernel") { page.run("shutdown-kernel", arg: session.id) }
+            Button("Shut Down Kernel") { page?.run("shutdown-kernel", arg: session.id) }
+                .disabled(page == nil)
         }
     }
 
@@ -513,7 +542,9 @@ private struct KernelRow: View {
         WorkspaceTabs.openOrFocus(
             WindowTarget.file(serverPath: session.path, in: place),
             serverPath: session.path,
-            in: page)
+            in: page,
+            fallback: onOpenNotebook
+        )
     }
 
     /// The path, the kernel's state and its memory.
@@ -837,6 +868,84 @@ struct NotebookToolbar: ToolbarContent {
     }
 }
 
+/// Active-tab toolbar wrapper (#904) that delegates `.page` tabs to
+/// `NotebookToolbar`, provides a clean `Save` action for `.editor` tabs, and
+/// provides `Move to Panel` for `.terminal` tabs.
+struct WorkspaceToolbar: ToolbarContent {
+    enum Mode {
+        case page(
+            page: PageModel,
+            document: PageDocument,
+            panel: PanelController?,
+            place: Place,
+            header: HeaderStatus?,
+            title: String?,
+            inspectorShown: Bool?,
+            toggleInspector: () -> Void,
+            panelShown: Bool,
+            toggleTerminalPanel: () -> Void
+        )
+        case editor(document: EditorDocument)
+        case terminal(canMoveToPanel: Bool, moveToPanel: () -> Void)
+        case sample
+    }
+
+    let mode: Mode
+    var update: AppUpdater.Available?
+
+    var body: some ToolbarContent {
+        switch mode {
+        case .page(
+            let page, let document, let panel, let place, let header,
+            let title, let inspectorShown, let toggleInspector,
+            let panelShown, let toggleTerminalPanel
+        ):
+            NotebookToolbar(
+                page: page,
+                document: document,
+                panel: panel,
+                place: place,
+                header: header,
+                title: title,
+                inspectorShown: inspectorShown,
+                toggleInspector: toggleInspector,
+                panelShown: panelShown,
+                toggleTerminalPanel: toggleTerminalPanel,
+                update: update
+            )
+        case .editor(let document):
+            if let update {
+                ToolbarItem(placement: .navigation) {
+                    UpdateAvailableButton(available: update)
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button("Save") { Task { await document.save() } }
+                    .disabled(!document.dirty)
+            }
+        case .terminal(let canMoveToPanel, let moveToPanel):
+            if let update {
+                ToolbarItem(placement: .navigation) {
+                    UpdateAvailableButton(available: update)
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: moveToPanel) {
+                    Label("Move to Panel", systemImage: "rectangle.bottomthird.inset.filled")
+                }
+                .help("Move this terminal into a notebook window’s bottom panel")
+                .disabled(!canMoveToPanel)
+            }
+        case .sample:
+            if let update {
+                ToolbarItem(placement: .navigation) {
+                    UpdateAvailableButton(available: update)
+                }
+            }
+        }
+    }
+}
+
 /// The status button (#241, #812, #867): the kernel's chip in the toolbar —
 /// a dot, the kernel's name, where it runs and what it is doing, as
 /// "TypeScript · This Mac · Idle" — and a popover with the status line's
@@ -1083,18 +1192,22 @@ struct NewCommands: View {
         let _ = model.openRequests.useFallback { [openWindow] in openWindow(value: $0) }
         let _ = WorkspaceTabs.useOpener { [openWindow] in openWindow(id: $0) }
         Button("New Notebook") {
+            let serverFolder = scope?.serverFolder ?? FolderEntry.serverPath(folder ?? model.root)
             if let page {
                 // The window's folder on its own server: a machine's too.
-                page.run("new-notebook", arg: scope?.serverFolder ?? FolderEntry.serverPath(folder ?? model.root))
+                page.run("new-notebook", arg: serverFolder)
             } else {
-                openWindow(value: WindowTarget.folder(model.root))
+                WorkspaceTabs.newNotebook(in: serverFolder) {
+                    openWindow(value: WindowTarget.folder(model.root))
+                }
             }
         }
         .keyboardShortcut("n")
         // A DuckDB prompt for this folder (#679), as a tab of its own with
         // a new engine (#729): the notebook in the front tab stays open.
         Button("New DuckDB Console") {
-            openWindow(value: WindowTarget.console(folder: folder ?? model.root, id: UUID()))
+            let target = WindowTarget.console(folder: folder ?? model.root, id: UUID())
+            WorkspaceTabs.openTarget(target, reuseExisting: false) { openWindow(value: $0) }
         }
         // As before: not from a machine's window or with no window, which
         // have no `windowFolder` (a notebook window always sets it).

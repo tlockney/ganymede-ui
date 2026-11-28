@@ -16,6 +16,15 @@ final class PageDocument {
     /// The page, which saves through `window.ganymede.save()`.
     @ObservationIgnored weak var webView: WKWebView?
     @ObservationIgnored private(set) weak var window: NSWindow?
+    /// Whether this tab is currently active in `window`: background tabs remain
+    /// attached to `window` for quit tracking (`confirmQuit`), while only the
+    /// active tab drives `window.isDocumentEdited` and `window.representedURL` (#904).
+    @ObservationIgnored var isActiveInWindow = true {
+        didSet {
+            guard isActiveInWindow != oldValue else { return }
+            if isActiveInWindow { syncWindow() }
+        }
+    }
     @ObservationIgnored private var closeGuard: CloseGuard?
     @ObservationIgnored private let noteRecent: @MainActor (URL, Place) -> Void
     @ObservationIgnored private let indexSaved: @MainActor (URL) -> Void
@@ -48,21 +57,44 @@ final class PageDocument {
         syncWindow()
     }
 
-    /// The window this document is shown in; asks before it closes with
-    /// unsaved edits.
-    func attach(to window: NSWindow) {
-        guard self.window !== window else { return }
-        self.window = window
-        let closeGuard = CloseGuard(document: self, original: window.delegate)
-        window.delegate = closeGuard
-        self.closeGuard = closeGuard
-        syncWindow()
+    /// The window this document is shown in; installs a single-document close
+    /// guard when `installCloseGuard` is true (tabbed windows install one
+    /// window-level guard via `WorkspaceTabController`).
+    func attach(to window: NSWindow, installCloseGuard: Bool = true) {
+        var changed = false
+        if self.window !== window {
+            self.window = window
+            changed = true
+        }
+        if installCloseGuard, closeGuard == nil {
+            let closeGuard = CloseGuard(document: self, original: window.delegate)
+            window.delegate = closeGuard
+            self.closeGuard = closeGuard
+            changed = true
+        }
+        if changed {
+            syncWindow()
+        }
     }
 
-    private func syncWindow() {
-        window?.isDocumentEdited = dirty
+    /// Detaches this document when its tab is removed or closed so it no longer
+    /// affects quit prompts for the old window.
+    func detach(from window: NSWindow) {
+        guard self.window === window else { return }
+        self.window = nil
+        isActiveInWindow = false
+    }
+
+    func syncWindow() {
+        guard isActiveInWindow, let window else { return }
+        if window.isDocumentEdited != dirty {
+            window.isDocumentEdited = dirty
+        }
         // The proxy icon: drag the file, ⌘-click for its folder.
-        window?.representedURL = DocumentEffects.representedURL(for: file, in: place)
+        let represented = DocumentEffects.representedURL(for: file, in: place)
+        if window.representedURL != represented {
+            window.representedURL = represented
+        }
     }
 
     /// Saves through the page; true when there is nothing left unsaved.
@@ -85,7 +117,10 @@ final class PageDocument {
     /// Downloads a copy of the notebook and waits until its save panel closes (#808).
     func downloadCopy() async {
         guard let webView else { return }
-        window?.makeKeyAndOrderFront(nil)
+        if let window {
+            WorkspaceTabs.select(pageDocument: self, in: window)
+            window.makeKeyAndOrderFront(nil)
+        }
         await DownloadWaiter.triggerDownload(in: webView)
     }
 
@@ -123,7 +158,10 @@ final class PageDocument {
             for document in unsaved {
                 let saved = await document.save()
                 if !saved {
-                    document.window?.makeKeyAndOrderFront(nil)
+                    if let window = document.window {
+                        WorkspaceTabs.select(pageDocument: document, in: window)
+                        window.makeKeyAndOrderFront(nil)
+                    }
                     return false
                 }
             }

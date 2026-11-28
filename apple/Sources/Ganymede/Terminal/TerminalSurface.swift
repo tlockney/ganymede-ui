@@ -88,6 +88,7 @@ private struct TerminalRepresentable: NSViewRepresentable {
             guard let window = view.window else { return }
             let has = window.firstResponder === view
             if focused, !has {
+                guard !WorkspaceTabs.isFindFieldResponder(in: window) else { return }
                 window.makeFirstResponder(view)
             } else if !focused, has {
                 returnKeyboardToPage(in: window)
@@ -113,7 +114,11 @@ private struct TerminalRepresentable: NSViewRepresentable {
 /// or to the window when it shows no notebook.
 @MainActor
 func returnKeyboardToPage(in window: NSWindow) {
-    window.makeFirstResponder(visibleWebView(in: window.contentView))
+    window.makeFirstResponder(
+        WorkspaceTabs.pageResponder(for: window) {
+            visibleWebView(in: window.contentView)
+        }
+    )
 }
 
 /// Whether a terminal has the keyboard in `window`: ⇧⌘↩ then fills the

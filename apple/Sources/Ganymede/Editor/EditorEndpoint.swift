@@ -11,7 +11,15 @@ extension EditorDocument {
     /// server is asked on every read and write, so a restarted server's new
     /// address and token are picked up.
     convenience init(_ request: EditorRequest) {
-        self.init(request, local: { AppModel.shared.localServer })
+        self.init(
+            request,
+            local: { AppModel.shared.localServer },
+            errorMessage: { error in
+                var name: String?
+                if let machine = request.machine { name = AppModel.shared.machineName(machine) }
+                return FileSourceError.textFileMessage(error, machine: request.machine, name: name)
+            }
+        )
     }
 
     /// What the view says about a read or save that failed: a machine's in

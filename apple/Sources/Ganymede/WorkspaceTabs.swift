@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import WebKit
 
 /// Notebooks, text files and terminals as tabs of one window (#247), with
 /// AppKit's own window tabs: every app window shares one tabbing
@@ -17,7 +18,8 @@ import AppKit
 /// outlined machine capsules, and dark mono terminal chips. When
 /// Developer Settings' `SettingsTab.customTabsKey` prototype toggle is on
 /// (off by default), `WorkspaceTabs` opts windows out of `NSWindowTabGroup`
-/// and routes `⌘T` / `⌘W` to the front window's `WorkspaceTabHost`.
+/// and routes `⌘T` / `⌘W` and tab opens to the front window's
+/// `WorkspaceTabController`.
 @MainActor
 enum WorkspaceTabs {
     static let identifier = "ganymede.workspace"
@@ -41,6 +43,30 @@ enum WorkspaceTabs {
         var openNewTab: @MainActor (WindowTarget) -> Bool
         var selectNextTab: @MainActor () -> Void
         var selectPreviousTab: @MainActor () -> Void
+        var openTab: @MainActor (WindowTarget, Bool) -> Bool
+        var openEditor: @MainActor (EditorRequest) -> Bool
+        var openTerminal: @MainActor (TerminalRequest) -> Bool
+        var newNotebook: @MainActor (String) -> Bool
+
+        init(
+            closeActiveTab: @escaping @MainActor () -> Bool,
+            openNewTab: @escaping @MainActor (WindowTarget) -> Bool,
+            selectNextTab: @escaping @MainActor () -> Void,
+            selectPreviousTab: @escaping @MainActor () -> Void,
+            openTab: (@MainActor (WindowTarget, Bool) -> Bool)? = nil,
+            openEditor: @escaping @MainActor (EditorRequest) -> Bool = { _ in false },
+            openTerminal: @escaping @MainActor (TerminalRequest) -> Bool = { _ in false },
+            newNotebook: @escaping @MainActor (String) -> Bool = { _ in false }
+        ) {
+            self.closeActiveTab = closeActiveTab
+            self.openNewTab = openNewTab
+            self.selectNextTab = selectNextTab
+            self.selectPreviousTab = selectPreviousTab
+            self.openTab = openTab ?? { target, _ in openNewTab(target) }
+            self.openEditor = openEditor
+            self.openTerminal = openTerminal
+            self.newNotebook = newNotebook
+        }
     }
 
     private final class CustomTabBox {
@@ -49,13 +75,101 @@ enum WorkspaceTabs {
     }
 
     private static let customHosts = NSMapTable<NSWindow, CustomTabBox>.weakToStrongObjects()
+    private static let controllers = NSMapTable<NSWindow, WorkspaceTabController>.weakToWeakObjects()
 
     static func registerCustomTabHost(for window: NSWindow, actions: CustomTabActions) {
         customHosts.setObject(CustomTabBox(actions), forKey: window)
     }
 
     static func unregisterCustomTabHost(for window: NSWindow) {
-        customHosts.removeObject(forKey: window)
+        if customHosts.object(forKey: window) != nil {
+            customHosts.removeObject(forKey: window)
+        }
+    }
+
+    static func registerController(_ controller: WorkspaceTabController, for window: NSWindow) {
+        if controllers.object(forKey: window) === controller { return }
+        controllers.setObject(controller, forKey: window)
+    }
+
+    static func unregisterController(_ controller: WorkspaceTabController, for window: NSWindow) {
+        if controllers.object(forKey: window) === controller {
+            controllers.removeObject(forKey: window)
+        }
+    }
+
+    static func controller(for window: NSWindow) -> WorkspaceTabController? {
+        controllers.object(forKey: window)
+    }
+
+    static var allControllers: [(window: NSWindow, controller: WorkspaceTabController)] {
+        var result: [(window: NSWindow, controller: WorkspaceTabController)] = []
+        var seen = Set<ObjectIdentifier>()
+        if let app = NSApp as NSApplication? {
+            for window in app.orderedWindows {
+                if let controller = controllers.object(forKey: window) {
+                    seen.insert(ObjectIdentifier(window))
+                    result.append((window, controller))
+                }
+            }
+        }
+        let enumerator = controllers.keyEnumerator()
+        while let window = enumerator.nextObject() as? NSWindow {
+            let id = ObjectIdentifier(window)
+            if !seen.contains(id), let controller = controllers.object(forKey: window) {
+                seen.insert(id)
+                result.append((window, controller))
+            }
+        }
+        return result
+    }
+
+    /// Returns the active `.page` tab's `WKWebView` for `window`, or `nil` if
+    /// the active tab is a terminal/editor or no controller is registered (#904).
+    static func activeWebView(for window: NSWindow) -> WKWebView? {
+        controller(for: window)?.activeWebView
+    }
+
+    /// Returns the keyboard target when leaving a terminal in `window`: the
+    /// active `.page` tab's `WKWebView` when a tab controller is registered
+    /// (returning `nil` if the active tab is not `.page` so hidden background
+    /// web views in the `ZStack` never capture focus), or `fallback()` when no
+    /// controller is registered for `window`.
+    static func pageResponder(
+        for window: NSWindow,
+        fallback: () -> NSResponder?
+    ) -> NSResponder? {
+        if let controller = controller(for: window) {
+            return controller.activeWebView
+        }
+        return fallback()
+    }
+
+    /// Returns the active `.page` tab's `PageModel` when attached to `window`,
+    /// or `nil` when the active tab is not a `.page` (#904).
+    static func activePage(for window: NSWindow) -> PageModel? {
+        guard let page = controller(for: window)?.activePage?.page,
+              page.webView?.window === window
+        else { return nil }
+        return page
+    }
+
+    static func select(pageDocument: PageDocument, in window: NSWindow) {
+        controller(for: window)?.select(pageDocument: pageDocument)
+    }
+
+    static func select(editorDocument: EditorDocument, in window: NSWindow) {
+        controller(for: window)?.select(editorDocument: editorDocument)
+    }
+
+    /// Whether the sidebar's `FindField` currently owns keyboard input in `window`.
+    static func isFindFieldResponder(in window: NSWindow) -> Bool {
+        if window.firstResponder is FindNSTextField { return true }
+        if let textView = window.firstResponder as? NSTextView,
+           textView.delegate is FindNSTextField {
+            return true
+        }
+        return false
     }
 
     /// A new notebook window asked for by File › New Tab or New Window: what
@@ -80,8 +194,7 @@ enum WorkspaceTabs {
     /// window or, with `alone`, a window of its own.
     static func open(target: WindowTarget, alone: Bool, with openWindow: (String) -> Void) {
         if isCustomStripEnabled, !alone,
-           let app = NSApp as NSApplication?,
-           let host = app.keyWindow ?? app.mainWindow,
+           let host = frontCustomHostWindow(),
            let box = customHosts.object(forKey: host),
            box.actions.openNewTab(target) {
             return
@@ -95,6 +208,101 @@ enum WorkspaceTabs {
         }
     }
 
+    /// Opens a `WindowTarget` as an in-window tab when the custom tab strip is
+    /// active, reusing an existing tab matching `target` across open windows
+    /// when `reuseExisting` is true, or falls back to SwiftUI's `openWindow(value:)`.
+    static func openTarget(
+        _ target: WindowTarget,
+        preferredWindow: NSWindow? = nil,
+        reuseExisting: Bool = true,
+        fallback: (WindowTarget) -> Void
+    ) {
+        if reuseExisting, focus(target) {
+            return
+        }
+        if isCustomStripEnabled,
+           let host = preferredWindow ?? frontCustomHostWindow(),
+           let box = customHosts.object(forKey: host),
+           box.actions.openTab(target, reuseExisting) {
+            host.makeKeyAndOrderFront(nil)
+            return
+        }
+        fallback(target)
+    }
+
+    /// Opens a text file in an `.editor` tab when the custom tab strip is active,
+    /// or falls back to `EditorWindow` via `openWindow(value:)`.
+    static func openEditor(
+        _ request: EditorRequest,
+        preferredWindow: NSWindow? = nil,
+        fallback: (EditorRequest) -> Void
+    ) {
+        if isCustomStripEnabled {
+            for pair in allControllers {
+                if let existing = pair.controller.sessions.first(where: {
+                    $0.editorTab?.request == request
+                }) {
+                    pair.controller.select(existing.id)
+                    pair.window.makeKeyAndOrderFront(nil)
+                    return
+                }
+            }
+            if let host = preferredWindow ?? frontCustomHostWindow(),
+               let box = customHosts.object(forKey: host),
+               box.actions.openEditor(request) {
+                host.makeKeyAndOrderFront(nil)
+                return
+            }
+        }
+        fallback(request)
+    }
+
+    /// Opens a terminal in a `.terminal` tab when the custom tab strip is active,
+    /// or falls back to `TerminalWindow` via `openWindow(value:)`.
+    static func openTerminal(
+        _ request: TerminalRequest,
+        preferredWindow: NSWindow? = nil,
+        fallback: (TerminalRequest) -> Void
+    ) {
+        if isCustomStripEnabled,
+           let host = preferredWindow ?? frontCustomHostWindow(),
+           let box = customHosts.object(forKey: host),
+           box.actions.openTerminal(request) {
+            host.makeKeyAndOrderFront(nil)
+            return
+        }
+        fallback(request)
+    }
+
+    /// Opens a new notebook in `folderPath` in the front custom-tab window when
+    /// no `.page` tab is currently focused, or falls back otherwise.
+    static func newNotebook(
+        in folderPath: String,
+        preferredWindow: NSWindow? = nil,
+        fallback: () -> Void
+    ) {
+        if isCustomStripEnabled,
+           let host = preferredWindow ?? frontCustomHostWindow(),
+           let box = customHosts.object(forKey: host),
+           box.actions.newNotebook(folderPath) {
+            host.makeKeyAndOrderFront(nil)
+            return
+        }
+        fallback()
+    }
+
+    private static func frontCustomHostWindow() -> NSWindow? {
+        if let app = NSApp as NSApplication? {
+            for candidate in [app.keyWindow, app.mainWindow].compactMap({ $0 }) {
+                if customHosts.object(forKey: candidate) != nil { return candidate }
+            }
+            for candidate in app.orderedWindows {
+                if customHosts.object(forKey: candidate) != nil { return candidate }
+            }
+        }
+        return allControllers.first { customHosts.object(forKey: $0.window) != nil }?.window
+    }
+
     /// Hands the pending request to the window that takes it.
     static func take(_ request: Request) {
         if pending == request { pending = nil }
@@ -106,7 +314,9 @@ enum WorkspaceTabs {
     static func join(_ window: NSWindow, alone: Bool = false) {
         windows.add(window)
         if isCustomStripEnabled {
-            window.tabbingMode = .disallowed
+            if window.tabbingMode != .disallowed {
+                window.tabbingMode = .disallowed
+            }
             return
         }
         guard window.tabbingIdentifier != identifier else { return }
@@ -168,10 +378,23 @@ enum WorkspaceTabs {
     }
 
     /// Brings forward an open window or tab already showing `target` (#884),
-    /// returning whether one was found.
+    /// searching both custom-tab `WorkspaceTabController` stores and native
+    /// AppKit `OpenWindows`, and returning whether one was found.
     @discardableResult
     static func focus(_ target: WindowTarget) -> Bool {
         let app = NSApp as NSApplication?
+        if isCustomStripEnabled {
+            if let preferred = app?.keyWindow ?? app?.mainWindow,
+               let controller = controller(for: preferred),
+               focus(target, in: controller, window: preferred) {
+                return true
+            }
+            for pair in allControllers {
+                if focus(target, in: pair.controller, window: pair.window) {
+                    return true
+                }
+            }
+        }
         guard let window = windows.window(
             showing: target,
             preferring: app?.keyWindow ?? app?.mainWindow,
@@ -181,18 +404,46 @@ enum WorkspaceTabs {
         return true
     }
 
-    /// Focuses an open tab showing `target` if one exists, otherwise opens
-    /// `serverPath` in `page` (#884).
-    static func openOrFocus(_ target: WindowTarget?, serverPath: String, in page: PageModel) {
-        if let target, focus(target) { return }
-        page.run("open", arg: serverPath)
+    private static func focus(
+        _ target: WindowTarget,
+        in controller: WorkspaceTabController,
+        window: NSWindow
+    ) -> Bool {
+        guard let existing = controller.sessions.first(where: {
+            $0.pageTab?.effectiveTarget.matchesOpenTarget(target) == true
+        }) else {
+            return false
+        }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        controller.select(existing.id)
+        window.makeKeyAndOrderFront(nil)
+        return true
     }
 
     /// Focuses an open tab showing `target` if one exists, otherwise opens
-    /// a new tab with `openWindow` (#884).
-    static func openOrFocusTab(_ target: WindowTarget, with openWindow: (WindowTarget) -> Void) {
-        if focus(target) { return }
-        openWindow(target)
+    /// `serverPath` in `page` (or invokes `fallback` when no `.page` tab is active, #884, #904).
+    static func openOrFocus(
+        _ target: WindowTarget?,
+        serverPath: String,
+        in page: PageModel?,
+        fallback onOpenNotebook: ((String) -> Void)? = nil
+    ) {
+        if let target, focus(target) { return }
+        if let page {
+            page.run("open", arg: serverPath)
+        } else {
+            onOpenNotebook?(serverPath)
+        }
+    }
+
+    /// Focuses an open tab showing `target` if one exists, otherwise opens
+    /// a new tab in `preferredWindow` or via `openWindow` (#884, #904).
+    static func openOrFocusTab(
+        _ target: WindowTarget,
+        preferredWindow: NSWindow? = nil,
+        with openWindow: (WindowTarget) -> Void
+    ) {
+        openTarget(target, preferredWindow: preferredWindow, reuseExisting: true, fallback: openWindow)
     }
 
     private static func focus(_ window: NSWindow) {
@@ -226,6 +477,12 @@ enum WorkspaceTabs {
     /// Marks `window`'s tab with a dot while its notebook's kernel is busy
     /// (#247), so a run in a background tab shows. Nothing while idle.
     static func markBusy(_ window: NSWindow, _ busy: Bool) {
+        if isCustomStripEnabled {
+            if window.tab.accessoryView != nil {
+                window.tab.accessoryView = nil
+            }
+            return
+        }
         let marked = window.tab.accessoryView != nil
         guard busy != marked else { return }
         window.tab.accessoryView = busy ? busyDot() : nil

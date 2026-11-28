@@ -650,7 +650,9 @@ targets:
       # iPhone visual redesign chrome state and contrast helpers (#915).
       - path: Sources/Ganymede/Touch/PhoneChromeState.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
+      - path: Sources/Ganymede/FocusedModels.swift
       - path: Sources/Ganymede/Tabs/WorkspaceTabModel.swift
+      - path: Sources/Ganymede/Tabs/WorkspaceTabStore.swift
       - path: Sources/Ganymede/Tabs/TabStripLayout.swift
       # iPad Split View, toolbar, and touch tab strip rules (#914).
       - path: Sources/Ganymede/Touch/IPadLayout.swift
@@ -660,6 +662,7 @@ targets:
       - path: Sources/Ganymede/Editor/TextFile.swift
       # The request that names the file's place (#855).
       - path: Sources/Ganymede/Editor/EditorRequest.swift
+      - path: Sources/Ganymede/Editor/EditorDocument.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
       # The line-number ruler (#661).
       - path: Sources/Ganymede/Editor/LineNumbers.swift
@@ -759,7 +762,9 @@ targets:
       # iPhone visual redesign chrome state and contrast helpers (#915).
       - path: Sources/Ganymede/Touch/PhoneChromeState.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
+      - path: Sources/Ganymede/FocusedModels.swift
       - path: Sources/Ganymede/Tabs/WorkspaceTabModel.swift
+      - path: Sources/Ganymede/Tabs/WorkspaceTabStore.swift
       - path: Sources/Ganymede/Tabs/TabStripLayout.swift
       # iPad Split View, toolbar, and touch tab strip rules (#914).
       - path: Sources/Ganymede/Touch/IPadLayout.swift
@@ -769,6 +774,7 @@ targets:
       - path: Sources/Ganymede/Editor/TextFile.swift
       # The request that names the file's place (#855).
       - path: Sources/Ganymede/Editor/EditorRequest.swift
+      - path: Sources/Ganymede/Editor/EditorDocument.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
       # The line-number gutter (#524).
       - path: Sources/Ganymede/Editor/LineNumbers.swift
