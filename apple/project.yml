@@ -671,6 +671,7 @@ targets:
       - path: Sources/Ganymede/LinkOpener.swift
       - path: Sources/Ganymede/AppMCP.swift
       - path: Sources/Ganymede/CommandLineTool.swift
+      - path: Sources/Ganymede/NotebookIntents.swift
       - path: Sources/Ganymede/AppTailnet.swift
       - path: Sources/Ganymede/HelpLinks.swift
       - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
@@ -698,6 +699,7 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) GANYMEDE_TESTS
   GanymedeTests-iOS:
     type: bundle.unit-test
     platform: iOS

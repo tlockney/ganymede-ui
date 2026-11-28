@@ -62,8 +62,8 @@ enum NotebookFinder {
 
     @MainActor
     static func all() async -> [NotebookEntity] {
-        let recents = Recents.shared.urls.filter { $0.pathExtension == "ipynb" }
-        let root = AppModel.shared.root
+        let recents = IntentServer.environment.recentNotebooks().filter { $0.pathExtension == "ipynb" }
+        let root = IntentServer.environment.searchRoot()
         let found: [URL]
         if let cached, cached.root == root, ContinuousClock.now - cached.at < .seconds(10) {
             found = cached.found
@@ -73,6 +73,11 @@ enum NotebookFinder {
         }
         var seen = Set<String>()
         return (recents + found).map(NotebookEntity.init(url:)).filter { seen.insert($0.id).inserted }
+    }
+
+    @MainActor
+    static func clearCache() {
+        cached = nil
     }
 
     /// Notebooks under `folder`, skipping hidden files and packages.
@@ -153,19 +158,36 @@ extension NotebookActionError: CustomLocalizedStringResourceConvertible {
 /// The app's server, ready, and API paths on it.
 @MainActor
 enum IntentServer {
+    /// Dependencies supplied by the running app (`Environment.live`), or
+    /// replaced in unit tests so intents can execute `.perform()` directly.
+    struct Environment {
+        var actions: @MainActor () async throws -> NotebookActions
+        var serverRootFolder: @MainActor () -> URL
+        var searchRoot: @MainActor () -> URL
+        var recentNotebooks: @MainActor () -> [URL]
+        var open: @MainActor (URL) -> Void
+        var confirmRun: @MainActor (URL, String?, String?) throws -> Void
+    }
+
+    #if !GANYMEDE_TESTS
+    static var environment = Environment.live
+    #else
+    static var environment = Environment.unconfigured
+    #endif
+
     static func actions() async throws -> NotebookActions {
-        NotebookActions(server: try await AppModel.shared.readyServer())
+        try await environment.actions()
     }
 
     static func path(_ url: URL) throws -> String {
-        guard let path = NotebookActions.apiPath(for: url, root: AppModel.shared.serverRootFolder) else {
+        guard let path = NotebookActions.apiPath(for: url, root: environment.serverRootFolder()) else {
             throw NotebookActionError.outsideServer(url.path)
         }
         return path
     }
 
     static func url(_ path: String) -> URL {
-        AppModel.shared.serverRootFolder.appendingPathComponent(path)
+        environment.serverRootFolder().appendingPathComponent(path)
     }
 
     /// The folder a Shortcuts folder parameter names.
@@ -176,9 +198,43 @@ enum IntentServer {
 
     /// Opens `url` in a window and brings the app forward.
     static func open(_ url: URL) {
-        NSApp.activate()
-        AppModel.shared.openRequests.add([url])
+        environment.open(url)
     }
+
+    static func confirmRun(_ url: URL, cell: String?, params: String?) throws {
+        try environment.confirmRun(url, cell, params)
+    }
+}
+
+extension IntentServer.Environment {
+    #if !GANYMEDE_TESTS
+    @MainActor
+    static let live = Self(
+        actions: { NotebookActions(server: try await AppModel.shared.readyServer()) },
+        serverRootFolder: { AppModel.shared.serverRootFolder },
+        searchRoot: { AppModel.shared.root },
+        recentNotebooks: { Recents.shared.urls.filter { $0.pathExtension == "ipynb" } },
+        open: { url in
+            NSApp.activate()
+            AppModel.shared.openRequests.add([url])
+        },
+        confirmRun: { url, cell, params in
+            try AppURLHandler.confirmRun(
+                url, cell: cell, params: params, sendingTo: AppURL.shortcutsDestination, from: .shortcut
+            )
+        }
+    )
+    #else
+    @MainActor
+    static let unconfigured = Self(
+        actions: { throw NotebookActionError.badResponse("IntentServer.environment is not configured") },
+        serverRootFolder: { URL(fileURLWithPath: "/", isDirectory: true) },
+        searchRoot: { FileManager.default.temporaryDirectory },
+        recentNotebooks: { [] },
+        open: { _ in },
+        confirmRun: { _, _, _ in throw AppURLError.cancelled }
+    )
+    #endif
 }
 
 // MARK: Intents
@@ -262,7 +318,7 @@ struct RunNotebookIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<[CellOutputEntity]> {
-        try AppURLHandler.confirmRun(notebook.url, cell: nil, params: nil, sendingTo: AppURL.shortcutsDestination, from: .shortcut)
+        try IntentServer.confirmRun(notebook.url, cell: nil, params: nil)
         let actions = try await IntentServer.actions()
         let path = try IntentServer.path(notebook.url)
         let cells = try await actions.notebookRunAll(path: path, restart: restart, timeout: timeout)
@@ -291,7 +347,7 @@ struct RunNotebookWithParametersIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<String> {
-        try AppURLHandler.confirmRun(notebook.url, cell: nil, params: params, sendingTo: AppURL.shortcutsDestination, from: .shortcut)
+        try IntentServer.confirmRun(notebook.url, cell: nil, params: params)
         let actions = try await IntentServer.actions()
         let path = try IntentServer.path(notebook.url)
         let result = try await actions.notebookRunWithParams(path: path, params: params, timeout: timeout)
@@ -321,7 +377,7 @@ struct RunCellIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<[CellOutputEntity]> {
-        try AppURLHandler.confirmRun(notebook.url, cell: cell, params: nil, sendingTo: AppURL.shortcutsDestination, from: .shortcut)
+        try IntentServer.confirmRun(notebook.url, cell: cell, params: nil)
         let actions = try await IntentServer.actions()
         let path = try IntentServer.path(notebook.url)
         let cells = try await actions.cellRun(path: path, cell: cell, timeout: timeout)
