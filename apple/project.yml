@@ -653,7 +653,11 @@ targets:
       - path: Sources/Ganymede/FocusedModels.swift
       - path: Sources/Ganymede/Tabs/WorkspaceTabModel.swift
       - path: Sources/Ganymede/Tabs/WorkspaceTabStore.swift
+      - path: Sources/Ganymede/Tabs/WorkspaceTabHandoff.swift
       - path: Sources/Ganymede/Tabs/TabStripLayout.swift
+      - path: Sources/Ganymede/Tabs/TabDragGeometry.swift
+      - path: Sources/Ganymede/Tabs/TabOverviewState.swift
+      - path: Sources/Ganymede/Tabs/RestorableTabSet.swift
       # iPad Split View, toolbar, and touch tab strip rules (#914).
       - path: Sources/Ganymede/Touch/IPadLayout.swift
       - path: Sources/Ganymede/FileSearch.swift
@@ -764,6 +768,9 @@ targets:
       - path: Sources/Ganymede/Tabs/WorkspaceTabModel.swift
       - path: Sources/Ganymede/Tabs/WorkspaceTabStore.swift
       - path: Sources/Ganymede/Tabs/TabStripLayout.swift
+      - path: Sources/Ganymede/Tabs/TabDragGeometry.swift
+      - path: Sources/Ganymede/Tabs/TabOverviewState.swift
+      - path: Sources/Ganymede/Tabs/RestorableTabSet.swift
       # iPad Split View, toolbar, and touch tab strip rules (#914).
       - path: Sources/Ganymede/Touch/IPadLayout.swift
       - path: Sources/Ganymede/FileSearch.swift

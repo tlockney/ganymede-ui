@@ -150,16 +150,6 @@ final class WorkspaceTabStoreTests: XCTestCase {
         XCTAssertEqual(editorID1, editorID2, "duplicate EditorRequest selects existing editor tab")
         XCTAssertNotEqual(editorID1, editorRemoteID)
         XCTAssertEqual(controller.activeEditor?.windowTitle(machineName: "Mac Studio"), "notes.md · Mac Studio")
-
-        controller.syncSampleTabs(enabled: true)
-        XCTAssertTrue(controller.sessions.contains(where: \.isSample))
-        if let sampleID = controller.sessions.first(where: \.isSample)?.id {
-            controller.select(sampleID)
-            XCTAssertEqual(controller.selectedID, sampleID)
-        }
-        controller.syncSampleTabs(enabled: false)
-        XCTAssertFalse(controller.sessions.contains(where: \.isSample))
-        XCTAssertEqual(controller.selectedID, controller.sessions.first?.id)
     }
 
     func testSingleCloseGuardAndBackgroundDocumentsDoNotClobberWindowChrome() {
@@ -343,15 +333,6 @@ final class WorkspaceTabStoreTests: XCTestCase {
     }
 
     func testCustomStripFocusesExistingInWindowTabAndFallsBackWhenNoPageActive() throws {
-        let suiteName = "WorkspaceTabStoreTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        WorkspaceTabs.defaults = defaults
-        defer {
-            WorkspaceTabs.defaults = .standard
-            UserDefaults.standard.removePersistentDomain(forName: suiteName)
-        }
-        defaults.set(true, forKey: SettingsTab.customTabsKey)
-
         let fm = FileManager.default
         let base = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let realDir = base.appendingPathComponent("real", isDirectory: true)

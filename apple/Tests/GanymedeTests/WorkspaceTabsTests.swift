@@ -2,64 +2,43 @@
 import AppKit
 import XCTest
 
-/// Notebook, file and terminal windows as tabs of one window (#247).
+/// Workspace window registration, graduated custom tab strip routing, close
+/// behavior, and focus-existing-tab semantics (#247, #407, #884, #905).
 @MainActor
 final class WorkspaceTabsTests: XCTestCase {
-    private var defaultsSuiteName = ""
-
-    override func setUp() {
-        super.setUp()
-        defaultsSuiteName = "WorkspaceTabsTests.\(UUID().uuidString)"
-        WorkspaceTabs.defaults = UserDefaults(suiteName: defaultsSuiteName)!
-    }
-
-    override func tearDown() {
-        WorkspaceTabs.defaults = .standard
-        if !defaultsSuiteName.isEmpty {
-            UserDefaults.standard.removePersistentDomain(forName: defaultsSuiteName)
-        }
-        super.tearDown()
-    }
-
     private func window() -> NSWindow {
-        NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled], backing: .buffered, defer: true)
+        let w = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        w.isReleasedWhenClosed = false
+        return w
     }
 
-    func testMarksTheTabWhileTheKernelIsBusy() {
+    func testMarkBusyClearsLegacyAppKitTabAccessory() {
         let w = window()
-        XCTAssertNil(w.tab.accessoryView)
+        w.tab.accessoryView = NSView(frame: NSRect(x: 0, y: 0, width: 8, height: 8))
         WorkspaceTabs.markBusy(w, true)
-        let dot = w.tab.accessoryView
-        XCTAssertNotNil(dot)
-        // Busy again keeps the same mark.
-        WorkspaceTabs.markBusy(w, true)
-        XCTAssertTrue(w.tab.accessoryView === dot)
+        XCTAssertNil(w.tab.accessoryView, "custom tab strip renders kernel status marks directly")
         WorkspaceTabs.markBusy(w, false)
         XCTAssertNil(w.tab.accessoryView)
     }
 
-    func testAJoinedWindowPrefersTabsWithTheSharedIdentifier() {
+    func testJoinedWorkspaceWindowDisablesNativeAppKitTabBar() {
         let w = window()
+        defer { _ = WorkspaceTabs.windows.closing(w) }
         WorkspaceTabs.join(w)
-        XCTAssertEqual(w.tabbingIdentifier, WorkspaceTabs.identifier)
-        XCTAssertEqual(w.tabbingMode, .preferred)
-    }
+        XCTAssertEqual(w.tabbingMode, .disallowed)
 
-    func testAWindowOpenedAloneRefusesTabsOnlyAsItOpens() {
         let alone = window()
+        defer { _ = WorkspaceTabs.windows.closing(alone) }
         WorkspaceTabs.join(alone, alone: true)
         XCTAssertEqual(alone.tabbingMode, .disallowed)
-        let next = window()
-        WorkspaceTabs.join(next)
-        XCTAssertEqual(next.tabbingMode, .preferred)
-        // After it has opened, the lone window takes tabs again.
-        let opened = expectation(description: "next run loop")
-        DispatchQueue.main.async { opened.fulfill() }
-        wait(for: [opened], timeout: 1)
-        XCTAssertEqual(alone.tabbingMode, .preferred)
     }
 
-    func testNewTabAlwaysOpensAWindowAndLeavesItsRequestForIt() {
+    func testNewWindowAlwaysOpensBySceneIDAndLeavesItsRequestForIt() {
         var opened: [String] = []
         let folder = URL(fileURLWithPath: "/tmp/moons")
         WorkspaceTabs.open(target: .folder(folder), alone: true) { opened.append($0) }
@@ -69,6 +48,35 @@ final class WorkspaceTabsTests: XCTestCase {
         XCTAssertEqual(request?.alone, true)
         WorkspaceTabs.take(request!)
         XCTAssertNil(WorkspaceTabs.pending, "taken by the window it opened")
+    }
+
+    func testNewTabRoutesIntoRegisteredFrontHostWindow() {
+        let host = window()
+        let folder = URL(fileURLWithPath: "/tmp/moons")
+        var openedTabs: [WindowTarget] = []
+        var openedWindows: [String] = []
+        WorkspaceTabs.registerCustomTabHost(
+            for: host,
+            actions: WorkspaceTabs.CustomTabActions(
+                closeActiveTab: { false },
+                openNewTab: { target in
+                    openedTabs.append(target)
+                    return true
+                },
+                selectNextTab: {},
+                selectPreviousTab: {}
+            )
+        )
+        let controller = WorkspaceTabController(target: .folder(folder), root: folder)
+        WorkspaceTabs.registerController(controller, for: host)
+        defer {
+            WorkspaceTabs.unregisterCustomTabHost(for: host)
+            WorkspaceTabs.unregisterController(controller, for: host)
+        }
+
+        WorkspaceTabs.open(target: .folder(folder), alone: false) { openedWindows.append($0) }
+        XCTAssertEqual(openedTabs, [.folder(folder)])
+        XCTAssertTrue(openedWindows.isEmpty)
     }
 
     func testAnUntakenRequestLapses() {
@@ -81,37 +89,6 @@ final class WorkspaceTabsTests: XCTestCase {
         }
         wait(for: [lapsed], timeout: 5)
         XCTAssertNil(WorkspaceTabs.pending)
-    }
-
-    func testJoiningTwiceChangesNothing() {
-        let w = window()
-        WorkspaceTabs.join(w)
-        w.tabbingMode = .disallowed
-        WorkspaceTabs.join(w)
-        XCTAssertEqual(w.tabbingMode, .disallowed)
-    }
-
-    /// ⌘W closes the active tab only, and closing the last one leaves the
-    /// app running (#407).
-    func testCloseClosesOnlyTheActiveTab() {
-        func tab() -> NSWindow {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            w.isReleasedWhenClosed = false
-            w.tabbingIdentifier = WorkspaceTabs.identifier
-            return w
-        }
-        let first = tab()
-        let second = tab()
-        first.orderFront(nil)
-        first.addTabbedWindow(second, ordered: .above)
-        XCTAssertEqual(first.tabbedWindows?.count, 2)
-        WorkspaceTabs.close(second)
-        XCTAssertFalse(second.isVisible)
-        XCTAssertTrue(first.isVisible, "the other tab stays open")
-        XCTAssertEqual(first.tabbedWindows?.count ?? 1, 1)
-        WorkspaceTabs.close(first)
-        XCTAssertFalse(first.isVisible)
-        XCTAssertFalse(WorkspaceTabs.quitsAfterLastTab)
     }
 
     /// Closing the last tab opens a window on the start screen (#407):
@@ -172,21 +149,10 @@ final class WorkspaceTabsTests: XCTestCase {
         XCTAssertFalse(windows.any)
     }
 
-    /// When the Step 6 custom tab strip toggle is enabled (#903), windows opt
-    /// out of AppKit window tabbing and `close` routes to the registered
-    /// in-window tab host first before closing the window.
-    func testCustomTabStripOptInDisablesAppKitTabbingAndRoutesClose() {
-        XCTAssertFalse(WorkspaceTabs.isCustomStripEnabled)
-        WorkspaceTabs.defaults.set(true, forKey: SettingsTab.customTabsKey)
-        XCTAssertTrue(WorkspaceTabs.isCustomStripEnabled)
-
-        let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        w.isReleasedWhenClosed = false
+    /// ⌘W closes the active tab in place when > 1 tabs are open, and closes
+    /// the window on its last tab without quitting the app (#407, #905).
+    func testCloseRoutesToCustomTabHostBeforeClosingWindow() {
+        let w = window()
         WorkspaceTabs.join(w)
         XCTAssertEqual(w.tabbingMode, .disallowed)
 
@@ -205,7 +171,10 @@ final class WorkspaceTabsTests: XCTestCase {
                 selectPreviousTab: {}
             )
         )
-        defer { WorkspaceTabs.unregisterCustomTabHost(for: w) }
+        defer {
+            WorkspaceTabs.unregisterCustomTabHost(for: w)
+            _ = WorkspaceTabs.windows.closing(w)
+        }
 
         w.orderFront(nil)
         WorkspaceTabs.close(w)
@@ -215,51 +184,36 @@ final class WorkspaceTabsTests: XCTestCase {
         shouldCloseInPlace = false
         WorkspaceTabs.close(w)
         XCTAssertFalse(w.isVisible, "closing the last tab closes the window")
+        XCTAssertFalse(WorkspaceTabs.quitsAfterLastTab)
     }
 
-    // MARK: Focus existing tab from sidebar (#884)
+    // MARK: Focus existing tab from sidebar (#884, #931)
 
     func testOpenOrFocusBringsExistingTabForwardWithoutReplacingFrontTab() {
-        func tab() -> NSWindow {
-            let w = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
-                styleMask: [.titled, .closable],
-                backing: .buffered,
-                defer: false
-            )
-            w.isReleasedWhenClosed = false
-            w.tabbingIdentifier = WorkspaceTabs.identifier
-            return w
-        }
         let dir = URL(fileURLWithPath: "/tmp/work", isDirectory: true)
         let nb399 = dir.appendingPathComponent("nb399.ipynb")
         let other = dir.appendingPathComponent("other.ipynb")
         let third = dir.appendingPathComponent("third.ipynb")
 
-        let first = tab()
-        let second = tab()
-        defer {
-            WorkspaceTabs.windows.closing(first)
-            WorkspaceTabs.windows.closing(second)
-            first.close()
-            second.close()
-        }
-        first.orderFront(nil)
-        first.addTabbedWindow(second, ordered: .above)
-        second.makeKeyAndOrderFront(nil)
-        XCTAssertTrue(first.tabGroup?.selectedWindow === second)
+        let win = window()
+        let controller = WorkspaceTabController(target: .file(nb399), root: dir)
+        let nb399ID = controller.sessions[0].id
+        _ = controller.addPageTab(target: .file(other), place: .thisDevice, machineName: nil)
 
-        WorkspaceTabs.note(first, target: .file(nb399), folder: dir, start: false)
-        WorkspaceTabs.note(second, target: .file(other), folder: dir, start: false)
+        WorkspaceTabs.registerController(controller, for: win)
+        defer {
+            WorkspaceTabs.unregisterController(controller, for: win)
+            win.close()
+        }
 
         let frontPage = PageModel()
         WorkspaceTabs.openOrFocus(.file(nb399), serverPath: "tmp/work/nb399.ipynb", in: frontPage)
-        XCTAssertTrue(first.tabGroup?.selectedWindow === first, "existing nb399 tab should come forward")
+        XCTAssertEqual(controller.selectedID, nb399ID, "existing nb399 tab should come forward")
         XCTAssertEqual(frontPage.pendingCount, 0, "front tab should not load a second copy")
 
         WorkspaceTabs.openOrFocus(.file(third), serverPath: "tmp/work/third.ipynb", in: frontPage)
         XCTAssertEqual(frontPage.pendingCount, 1, "unopened notebook opens in the current tab")
-        XCTAssertTrue(first.tabGroup?.selectedWindow === first)
+        XCTAssertEqual(controller.selectedID, nb399ID)
     }
 
     func testOpenWindowsTracksInPlaceNavigationPreferenceAndClosing() throws {
@@ -310,7 +264,7 @@ final class WorkspaceTabsTests: XCTestCase {
         let nb399 = dir.appendingPathComponent("nb399.ipynb")
         let other = dir.appendingPathComponent("other.ipynb")
         let existing = window()
-        defer { WorkspaceTabs.windows.closing(existing) }
+        defer { _ = WorkspaceTabs.windows.closing(existing) }
         WorkspaceTabs.note(existing, target: .file(nb399), folder: dir, start: false)
 
         var opened: [WindowTarget] = []

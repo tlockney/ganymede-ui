@@ -3,6 +3,15 @@ import AppKit
 import Observation
 import WebKit
 
+/// Type-erased handle to a `PageTabState`'s live macOS `PageWebViewStore`
+/// (`WebView.swift`) so `WorkspaceTabStore` stays decoupled from `WebView`
+/// and compiles cleanly in `GanymedeTests` (#905).
+@MainActor
+protocol PageWebViewRetiring: AnyObject {
+    var pagePlace: WorkspacePagePlace { get }
+    func retire()
+}
+
 /// Per-tab state for a notebook, console, folder, or machine page inside a
 /// window's `WorkspaceTabController` (#904).
 @MainActor
@@ -27,6 +36,13 @@ final class PageTabState: Identifiable {
     let page: PageModel
     /// The open notebook's file and unsaved edits.
     let document: PageDocument
+    /// Live `WKWebView` + coordinator store preserved across cross-window tab transfers (#905).
+    @ObservationIgnored var webViewStore: (any PageWebViewRetiring)?
+
+    func retireWebView() {
+        webViewStore?.retire()
+        webViewStore = nil
+    }
 
     init(
         id: UUID = UUID(),
@@ -259,9 +275,6 @@ final class WorkspaceTabController {
         case page(PageTabState)
         case terminal(TerminalTabState)
         case editor(EditorTabState)
-        case sampleConsole
-        case sampleMachine(name: String)
-        case sampleTerminal
     }
 
     struct Session: Identifiable {
@@ -284,7 +297,30 @@ final class WorkspaceTabController {
             return nil
         }
 
-        var isSample: Bool { descriptor.isSample }
+        @MainActor
+        var sidebarRoot: URL {
+            switch payload {
+            case .page(let tab): tab.sidebarRoot
+            case .editor(let tab): tab.sidebarRoot
+            case .terminal(let tab): tab.sidebarRoot
+            }
+        }
+
+        @MainActor
+        var isDirty: Bool {
+            switch payload {
+            case .page(let tab): tab.document.dirty
+            case .editor(let tab): tab.document.dirty
+            case .terminal: false
+            }
+        }
+
+        @MainActor
+        func retireResources() {
+            if case .page(let tab) = payload {
+                tab.retireWebView()
+            }
+        }
     }
 
     @MainActor
@@ -333,6 +369,8 @@ final class WorkspaceTabController {
 
     private(set) var sessions: [Session] = []
     private(set) var selectedID: UUID
+    /// Whether the in-window `Show All Tabs` (`⇧⌘\`) grid overlay is visible (#905).
+    var isShowingOverview = false
 
     @ObservationIgnored private(set) weak var hostWindow: NSWindow?
     @ObservationIgnored private var closeGuard: WorkspaceWindowCloseGuard?
@@ -345,7 +383,8 @@ final class WorkspaceTabController {
     @ObservationIgnored var onTabClosePrompt: ((NSWindow, UnsavedDocument, @MainActor @escaping () -> Void) -> Void)?
 
     init(
-        initialPage: PageTabState,
+        sessions: [Session],
+        selectedID: UUID,
         pageDocumentFactory: @escaping @MainActor () -> PageDocument = {
             PageDocument(noteRecent: { _, _ in }, indexSaved: { _ in })
         },
@@ -355,14 +394,34 @@ final class WorkspaceTabController {
     ) {
         self.pageDocumentFactory = pageDocumentFactory
         self.editorDocumentFactory = editorDocumentFactory
-        self.selectedID = initialPage.id
+        self.sessions = sessions
+        if sessions.contains(where: { $0.id == selectedID }) {
+            self.selectedID = selectedID
+        } else {
+            self.selectedID = sessions.first?.id ?? selectedID
+        }
+    }
+
+    convenience init(
+        initialPage: PageTabState,
+        pageDocumentFactory: @escaping @MainActor () -> PageDocument = {
+            PageDocument(noteRecent: { _, _ in }, indexSaved: { _ in })
+        },
+        editorDocumentFactory: @escaping @MainActor (EditorRequest) -> EditorDocument = {
+            EditorDocument($0, local: { nil })
+        }
+    ) {
         let descriptor = initialPage.descriptor(
             place: initialPage.loadedPlace ?? initialPage.effectiveTarget.place,
             machineName: nil
         )
-        self.sessions = [
-            Session(id: initialPage.id, descriptor: descriptor, payload: .page(initialPage)),
-        ]
+        let session = Session(id: initialPage.id, descriptor: descriptor, payload: .page(initialPage))
+        self.init(
+            sessions: [session],
+            selectedID: initialPage.id,
+            pageDocumentFactory: pageDocumentFactory,
+            editorDocumentFactory: editorDocumentFactory
+        )
     }
 
     convenience init(
@@ -454,6 +513,156 @@ final class WorkspaceTabController {
     func select(at index: Int) {
         guard sessions.indices.contains(index) else { return }
         select(sessions[index].id)
+    }
+
+    func selectShortcutDigit(_ digit: Int) {
+        guard let index = TabShortcutResolver.targetIndex(forDigit: digit, tabCount: sessions.count) else {
+            return
+        }
+        isShowingOverview = false
+        select(at: index)
+    }
+
+    func toggleOverview() {
+        isShowingOverview.toggle()
+    }
+
+    var overviewItems: [TabOverviewItem] {
+        sessions.enumerated().map { index, session in
+            TabOverviewItem(
+                id: session.id,
+                descriptor: session.descriptor,
+                isDirty: session.isDirty,
+                isSelected: session.id == selectedID,
+                index: index
+            )
+        }
+    }
+
+    /// Snapshot of all tabs in order for `@SceneStorage("window.tabs")` (#905).
+    var restorableTabSet: RestorableTabSet {
+        let saved: [RestorableTabSet.SavedTab] = sessions.map { session in
+            switch session.payload {
+            case .page(let tab):
+                return .page(
+                    target: tab.effectiveTarget,
+                    sidebarRoot: FolderEntry.storageKey(tab.sidebarRoot)
+                )
+            case .editor(let tab):
+                return .editor(
+                    request: tab.request,
+                    sidebarRoot: FolderEntry.storageKey(tab.sidebarRoot)
+                )
+            case .terminal(let tab):
+                return .terminal(
+                    target: tab.target,
+                    sidebarRoot: FolderEntry.storageKey(tab.sidebarRoot)
+                )
+            }
+        }
+        return RestorableTabSet(tabs: saved, selectedIndex: activeIndex ?? 0)
+    }
+
+    /// Replaces the controller's sessions with a restored `RestorableTabSet`
+    /// across relaunch (#905), reusing an already-created initial blank/matching
+    /// `PageTabState` when its target matches so it never loads twice.
+    func restore(
+        from tabSet: RestorableTabSet,
+        placeResolver: (WindowTarget) -> Place,
+        machineNameResolver: (Place) -> String?,
+        thisMacRootResolver: (Place) -> URL?,
+        fallbackRoot: URL
+    ) {
+        guard !tabSet.tabs.isEmpty else { return }
+        let existingInitial = sessions.count == 1 ? sessions[0].pageTab : nil
+        var reusedInitial = false
+        var restored: [Session] = []
+
+        func resolvedSidebar(_ key: String, in place: Place, fallback: URL) -> URL {
+            if let loc = FolderEntry.location(storageKey: key),
+               FolderEntry.isLocation(loc, in: place) {
+                return loc
+            }
+            return fallback
+        }
+
+        for saved in tabSet.tabs {
+            switch saved {
+            case .page(let target, let sidebarKey):
+                let place = placeResolver(target)
+                let machineName = machineNameResolver(place)
+                let sidebarRoot = resolvedSidebar(sidebarKey, in: place, fallback: target.folder)
+                if !reusedInitial, let initial = existingInitial,
+                   initial.effectiveTarget == target {
+                    reusedInitial = true
+                    initial.target = target
+                    initial.loaded = target
+                    initial.loadedPlace = place
+                    initial.pagePlace = WorkspacePagePlace(place: place, root: thisMacRootResolver(place)?.path)
+                    initial.sidebarRoot = sidebarRoot
+                    let descriptor = initial.descriptor(place: place, machineName: machineName)
+                    restored.append(Session(id: initial.id, descriptor: descriptor, payload: .page(initial)))
+                } else {
+                    let pageTab = PageTabState(
+                        target: target,
+                        loaded: target,
+                        loadedPlace: place,
+                        pagePlace: WorkspacePagePlace(place: place, root: thisMacRootResolver(place)?.path),
+                        sidebarRoot: sidebarRoot,
+                        document: pageDocumentFactory()
+                    )
+                    let descriptor = pageTab.descriptor(place: place, machineName: machineName)
+                    restored.append(Session(id: pageTab.id, descriptor: descriptor, payload: .page(pageTab)))
+                }
+            case .editor(let request, let sidebarKey):
+                let place: Place = request.machine.flatMap {
+                    WindowTarget.machine($0, path: "/", isFolder: true).map(placeResolver)
+                } ?? .thisDevice
+                let machineName = machineNameResolver(place)
+                let sidebarRoot = resolvedSidebar(sidebarKey, in: place, fallback: fallbackRoot)
+                let document = editorDocumentFactory(request)
+                let editorTab = EditorTabState(
+                    request: request,
+                    document: document,
+                    sidebarRoot: sidebarRoot
+                )
+                restored.append(Session(
+                    id: editorTab.id,
+                    descriptor: editorTab.descriptor(machineName: machineName),
+                    payload: .editor(editorTab)
+                ))
+            case .terminal(let target, let sidebarKey):
+                let place: Place = {
+                    if case .server(let id, _) = target,
+                       let machineTarget = WindowTarget.machine(id.uuidString, path: "/", isFolder: true) {
+                        return placeResolver(machineTarget)
+                    }
+                    return .thisDevice
+                }()
+                let defaultFolder: URL = {
+                    if case .local(let folder) = target, let folder { return folder }
+                    return fallbackRoot
+                }()
+                let sidebarRoot = resolvedSidebar(sidebarKey, in: place, fallback: defaultFolder)
+                let terminalTab = TerminalTabState(target: target, sidebarRoot: sidebarRoot)
+                restored.append(Session(
+                    id: terminalTab.id,
+                    descriptor: terminalTab.descriptor(),
+                    payload: .terminal(terminalTab)
+                ))
+            }
+        }
+
+        guard !restored.isEmpty else { return }
+        if let window = hostWindow {
+            for old in sessions where !(reusedInitial && old.id == existingInitial?.id) {
+                detachSessionDocument(old, from: window)
+                old.retireResources()
+            }
+        }
+        sessions = restored
+        selectedID = restored[tabSet.clampedSelectedIndex].id
+        syncWindowDocumentAttachments()
     }
 
     func selectNext() {
@@ -595,28 +804,6 @@ final class WorkspaceTabController {
         }
     }
 
-    func syncSampleTabs(enabled: Bool) {
-        if !enabled {
-            let hadSelectedSample = activeSession?.isSample == true
-            sessions.removeAll { $0.isSample }
-            if hadSelectedSample, let fallback = sessions.first?.id {
-                select(fallback)
-            }
-            return
-        }
-        let existing = sessions.map(\.descriptor)
-        let addons = WorkspaceTabDescriptor.sampleAddons(for: existing)
-        for descriptor in addons {
-            guard !sessions.contains(where: { $0.id == descriptor.id }) else { continue }
-            let payload: SessionPayload = switch descriptor.kind {
-            case .machine: .sampleMachine(name: descriptor.title)
-            case .terminal: .sampleTerminal
-            case .notebook, .editor: .sampleConsole
-            }
-            insert(Session(id: descriptor.id, descriptor: descriptor, payload: payload), at: nil)
-        }
-    }
-
     func refreshKernels() {
         for session in sessions {
             session.pageTab?.page.refreshKernels()
@@ -694,7 +881,9 @@ final class WorkspaceTabController {
         guard sessions.count > 1, sessions.contains(where: { $0.id == id }) else {
             return false
         }
-        _ = detachSession(id)
+        if let removed = detachSession(id) {
+            removed.retireResources()
+        }
         return true
     }
 
@@ -728,16 +917,22 @@ final class WorkspaceTabController {
         if !dirtyOthers.isEmpty, let targetWindow {
             confirmMultipleClose(dirtyOthers, in: targetWindow, saveAllAction: { [weak self] in
                 guard let self else { return }
-                for other in others { _ = self.detachSession(other.id) }
+                for other in others {
+                    self.detachSession(other.id)?.retireResources()
+                }
                 self.select(id)
             }, discardAction: { [weak self] in
                 guard let self else { return }
-                for other in others { _ = self.detachSession(other.id) }
+                for other in others {
+                    self.detachSession(other.id)?.retireResources()
+                }
                 self.select(id)
             })
             return
         }
-        for other in others { _ = detachSession(other.id) }
+        for other in others {
+            detachSession(other.id)?.retireResources()
+        }
         select(id)
     }
 
@@ -759,9 +954,12 @@ final class WorkspaceTabController {
         syncWindowDocumentAttachments()
     }
 
-    func detachAll(from window: NSWindow) {
+    func detachAll(from window: NSWindow, retireResources: Bool = false) {
         for session in sessions {
             detachSessionDocument(session, from: window)
+            if retireResources {
+                session.retireResources()
+            }
         }
         if hostWindow === window {
             hostWindow = nil
@@ -785,7 +983,7 @@ final class WorkspaceTabController {
         case .editor(let tab):
             tab.document.isActiveInWindow = true
             tab.document.syncWindow()
-        case .terminal, .sampleConsole, .sampleMachine, .sampleTerminal, nil:
+        case .terminal, nil:
             window.isDocumentEdited = false
             window.representedURL = nil
         }
@@ -794,7 +992,7 @@ final class WorkspaceTabController {
     func confirmWindowClose(_ window: NSWindow) {
         let unsaved = unsavedDocuments
         guard !unsaved.isEmpty else {
-            detachAll(from: window)
+            detachAll(from: window, retireResources: true)
             window.close()
             return
         }
@@ -814,11 +1012,11 @@ final class WorkspaceTabController {
                     switch response {
                     case .alertFirstButtonReturn:
                         if await doc.save() {
-                            self.detachAll(from: window)
+                            self.detachAll(from: window, retireResources: true)
                             window.close()
                         }
                     case .alertThirdButtonReturn:
-                        self.detachAll(from: window)
+                        self.detachAll(from: window, retireResources: true)
                         window.close()
                     default:
                         break
@@ -831,11 +1029,11 @@ final class WorkspaceTabController {
             unsaved,
             in: window,
             saveAllAction: { [weak self] in
-                self?.detachAll(from: window)
+                self?.detachAll(from: window, retireResources: true)
                 window.close()
             },
             discardAction: { [weak self] in
-                self?.detachAll(from: window)
+                self?.detachAll(from: window, retireResources: true)
                 window.close()
             }
         )
@@ -871,7 +1069,7 @@ final class WorkspaceTabController {
         case .editor(let tab):
             tab.document.isActiveInWindow = active
             tab.document.attach(to: window, installCloseGuard: false)
-        case .terminal, .sampleConsole, .sampleMachine, .sampleTerminal:
+        case .terminal:
             break
         }
     }
@@ -882,7 +1080,7 @@ final class WorkspaceTabController {
             tab.document.detach(from: window)
         case .editor(let tab):
             tab.document.detach(from: window)
-        case .terminal, .sampleConsole, .sampleMachine, .sampleTerminal:
+        case .terminal:
             break
         }
     }

@@ -31,7 +31,8 @@ enum NavigatorTab: String, CaseIterable, Identifiable {
         }
     }
 
-    /// ⌘1 to ⌘6 in tab order, as Xcode's navigators; Journals, added last, takes ⌘6 so no
+    /// Shortcut digit 1–6 in tab order: `⌥⌘1`–`⌥⌘6` on Mac (freeing `⌘1`–`⌘9`
+    /// for workspace tabs, #905) and `⌘1`–`⌘6` on iPad; Journals takes 6 so no
     /// existing key moves.
     var shortcut: KeyEquivalent {
         switch self {
@@ -45,9 +46,22 @@ enum NavigatorTab: String, CaseIterable, Identifiable {
         }
     }
 
-    /// The tab's tooltip (#873): its name and the key that shows it, as
-    /// "Files (⌘1)".
-    var help: String { "\(title) (⌘\(String(shortcut.character)))" }
+    /// Shortcut modifiers per platform: `⌥⌘` on Mac (#905), `⌘` on iPad.
+    static func shortcutModifiers(for platform: SidebarPlatform = NavigatorTab.platform) -> EventModifiers {
+        switch platform {
+        case .mac: [.command, .option]
+        case .iPad: .command
+        }
+    }
+
+    /// The tab's tooltip (#873, #905): its name and the key that shows it, as
+    /// `"Files (⌥⌘1)"` on Mac and `"Files (⌘1)"` on iPad.
+    func help(for platform: SidebarPlatform = NavigatorTab.platform) -> String {
+        let prefix = platform == .mac ? "⌥⌘" : "⌘"
+        return "\(title) (\(prefix)\(String(shortcut.character)))"
+    }
+
+    var help: String { help(for: Self.platform) }
 
     /// What the Running tab's accessibility value says (#873): "2 running",
     /// or nothing while nothing runs.

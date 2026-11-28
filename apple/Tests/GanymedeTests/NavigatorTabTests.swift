@@ -162,12 +162,34 @@ final class NavigatorTabTests: XCTestCase {
         XCTAssertTrue(NavigatorTab.sidebarColumnShown(.automatic, portrait: true, compact: true))
     }
 
-    /// The capsule's tooltips and the Running tab's value (#873).
+    /// The capsule's tooltips and shortcuts (#873, #905): Mac uses `⌥⌘1`–`⌥⌘6`
+    /// so `⌘1`–`⌘9` switch workspace tabs, while iPad keeps `⌘1`–`⌘6`.
     func testEachTabNamesItselfAndItsKey() {
+        XCTAssertEqual(NavigatorTab.files.help(for: .mac), "Files (⌥⌘1)")
+        XCTAssertEqual(NavigatorTab.find.help(for: .mac), "Find (⌥⌘2)")
+        XCTAssertEqual(NavigatorTab.running.help(for: .mac), "Running (⌥⌘3)")
+        XCTAssertEqual(NavigatorTab.recents.help(for: .mac), "Recents (⌥⌘5)")
+        XCTAssertEqual(NavigatorTab.journals.help(for: .mac), "Journals (⌥⌘6)")
+        XCTAssertEqual(NavigatorTab.shortcutModifiers(for: .mac), [.command, .option])
+
+        XCTAssertEqual(NavigatorTab.files.help(for: .iPad), "Files (⌘1)")
+        XCTAssertEqual(NavigatorTab.search.help(for: .iPad), "Search (⌘2)")
+        XCTAssertEqual(NavigatorTab.running.help(for: .iPad), "Running (⌘3)")
+        XCTAssertEqual(NavigatorTab.outline.help(for: .iPad), "Outline (⌘4)")
+        XCTAssertEqual(NavigatorTab.journals.help(for: .iPad), "Journals (⌘6)")
+        XCTAssertEqual(NavigatorTab.shortcutModifiers(for: .iPad), .command)
+
+        #if os(macOS)
+        XCTAssertEqual(NavigatorTab.files.help, "Files (⌥⌘1)")
+        XCTAssertEqual(NavigatorTab.find.help, "Find (⌥⌘2)")
+        XCTAssertEqual(NavigatorTab.running.help, "Running (⌥⌘3)")
+        XCTAssertEqual(NavigatorTab.journals.help, "Journals (⌥⌘6)")
+        #else
         XCTAssertEqual(NavigatorTab.files.help, "Files (⌘1)")
-        XCTAssertEqual(NavigatorTab.find.help, "Find (⌘2)")
+        XCTAssertEqual(NavigatorTab.search.help, "Search (⌘2)")
         XCTAssertEqual(NavigatorTab.running.help, "Running (⌘3)")
         XCTAssertEqual(NavigatorTab.journals.help, "Journals (⌘6)")
+        #endif
     }
 
     func testTheRunningTabsValueSaysHowManyRun() {

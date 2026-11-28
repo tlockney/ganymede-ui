@@ -40,20 +40,46 @@ On first launch the app asks once whether to send crash reports
 
 ### Windows and tabs
 
+> [!NOTE]
+> **Unreleased.** The custom Mac tab strip, drag-reorder and cross-window
+> docking, `Show All Tabs` (`⇧⌘\`), `⌘1`–`⌘9` tab switching, and multi-tab
+> relaunch restoration are available only from a build of `main` (HEAD), not
+> in the latest release, which uses AppKit's system window tabs.
+
 - A notebook window behaves like a document window. Its title bar has the
   file's icon (drag it, or ⌘-click it for the folders above) and a dot
   while there are unsaved edits. File > Save (⌘S) saves. Closing the
   window or quitting with unsaved edits asks Save, Don't Save or Cancel.
-- Notebook, text file and terminal windows open as tabs of the front
-  window, with the system's window tabs: drag a tab out to make it a
-  window, or choose Window > Merge All Windows to bring windows back
-  together. Each tab keeps its own toolbar, and a notebook's tab shows a
-  dot while its kernel is running. File > Close (⌘W) closes the active
-  tab; closing the last one leaves the app running and opens a new window
-  on its folder, with New Notebook. Closing that window leaves the app
-  with no window; click its Dock icon or choose File > New Tab for one. Ganymede uses tabs whatever System
-  Settings > Desktop & Dock > "Prefer tabs when opening documents" says;
-  windows restored at launch come back as they were.
+- Notebooks, DuckDB consoles, text files, connected machines and standalone
+  terminals open as tabs in the window's custom tab strip directly below the
+  toolbar. Each kind keeps its own silhouette — document tabs with language
+  badges and live kernel status marks on the left, outlined connected-machine
+  capsules and dark monospace terminal chips on the right — with the active
+  tab joined to the page below. Dragging the empty trough space after `+`
+  moves the window.
+- Drag a tab horizontally to reorder it without reloading its page or ending
+  its shell, drag it out of the strip to detach it into a new window near the
+  drop point, or drag it onto another window's strip to dock it there
+  (closing an emptied source window cleanly). Live web views, unsaved edits
+  and running terminals move across windows intact.
+- **Window** menu commands and shortcuts cover multi-tab navigation:
+  - `⌘1`–`⌘8` select tabs 1–8 and `⌘9` selects the last tab.
+  - `⌃Tab` (`Select Next Tab`) and `⌃⇧Tab` (`Select Previous Tab`) cycle
+    through open tabs, including when a notebook or terminal has focus.
+  - `Move Tab to New Window` detaches the active tab into its own window,
+    and `Merge All Windows` brings tabs from all open workspace windows into
+    the frontmost window in front-to-back order.
+  - `Show All Tabs` (`⇧⌘\`) opens an in-window visual tab-grid overlay with
+    search filtering, arrow-key navigation, dirty/kernel badges, tab close
+    buttons and a `+` New Tab menu.
+- File > Close (⌘W) closes the active tab; closing the last one leaves the
+  app running and opens a new window on its folder, with New Notebook.
+  Closing that window leaves the app with no window; click its Dock icon or
+  choose File > New Tab for one. Ganymede uses its in-window tabs whatever
+  System Settings > Desktop & Dock > "Prefer tabs when opening documents"
+  says, and restores each window's ordered tabs, active tab and per-tab
+  sidebar folders across relaunch (reopening terminal tabs as fresh shells on
+  their saved target).
 - File > New Notebook (⌘N) makes a notebook in the window's folder, New
   Tab (⌘T) opens another tab, New Window (⌥⌘N) a window of its own, and
   Rename… renames the open notebook (saving it first; its kernel keeps
@@ -66,8 +92,8 @@ On first launch the app asks once whether to send crash reports
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where the sidebar has a row of icons for its tabs
-> and its foot shows where kernels run.
+> the latest release, where the sidebar has a row of icons for its tabs,
+> uses `⌘1`–`⌘6` for navigator shortcuts, and its foot shows where kernels run.
 
 At the sidebar's top are the app's mark and its name, and under them the
 tabs in one capsule: the tab on show draws its symbol and its name, the
@@ -75,9 +101,9 @@ others the symbol alone, and Running counts what is running. The column
 is a warm cream over the system's sidebar glass in the light, and navy
 in the dark.
 
-The sidebar has five tabs (⌘1 to ⌘6, with ⌘4 also opening Find). Each
-window keeps its sidebar shown or hidden, its tab and its expanded
-folders across launches.
+The sidebar has five tabs (`⌥⌘1` to `⌥⌘6`, with `⌥⌘4` also opening Find,
+leaving `⌘1`–`⌘9` for workspace tabs). Each window keeps its sidebar shown or
+hidden, its tab and its expanded folders across launches.
 
 - **Files** lists the window's folder as a tree. Click a folder's name
   to expand or collapse it. Right-click an item to
@@ -94,7 +120,7 @@ folders across launches.
   clicking a folder, or pressing Tab into the sidebar, keeps it in the
   sidebar.
 
-- **Find** (⌘2, and ⌘4, which was Outline's key) searches the open
+- **Find** (`⌥⌘2`, and `⌥⌘4`, which was Outline's key) searches the open
   notebook and the window's folder from one field. With the field empty
   it shows the notebook's outline; type a query and it lists the
   notebook's cells whose source holds it, each under the nearest heading
@@ -116,7 +142,7 @@ folders across launches.
   kernel or terminal to shut it down (or choose Kernel > Shut Down Other
   Kernels).
 - **Recents** lists the notebooks opened lately.
-- **Journals** (⌘6) lists the notebooks an agent is in or last wrote, in
+- **Journals** (`⌥⌘6`) lists the notebooks an agent is in or last wrote, in
   this window's place: the notebook, the agent's name and "running" while
   the agent is in it, otherwise when it last wrote ("2 min ago"). Click
   one to open it, or right-click to open it in a new tab. The server is

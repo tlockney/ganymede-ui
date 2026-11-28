@@ -17,12 +17,17 @@ struct ContentView: View {
     /// File › New Tab or New Window, when this window is the one they
     /// opened (#247): its folder, and whether it stands alone.
     @State private var request: WorkspaceTabs.Request?
+    /// Live session(s) handed off when detaching a tab to a new window or
+    /// opening a standalone terminal window (#905).
+    @State private var handoff: WorkspaceTabHandoff.PendingWindow?
+    @State private var didPositionHandoff = false
+    @State private var didRestoreTabs = false
     /// The bottom panel's terminals (#248), and whether it shows and how
     /// tall it is, kept with the window across launches.
     @State private var panel = PanelController()
-    /// What the window shows, kept with it so a window the system
-    /// restores comes back on it (#268). SwiftUI's own restoring of
-    /// `target` brought notebook windows back on the folder.
+    /// Ordered tabs, active index, and per-tab sidebar roots kept across launches (#905).
+    @SceneStorage("window.tabs") private var savedTabs = ""
+    /// Legacy single-tab target kept for backward-compatible fallback (#268).
     @SceneStorage("window.target") private var savedTarget = ""
     /// The sidebar's folder, kept likewise: it can differ from the
     /// notebook's own folder.
@@ -44,14 +49,23 @@ struct ContentView: View {
     @AppStorage(StatusBarContent.shownKey) private var statusBarShown = true
     /// A newer release, once a check found it (#411).
     private let updater = AppUpdater.shared
-    /// Experimental Step 6 custom tab strip (#903), off by default.
-    @AppStorage(SettingsTab.customTabsKey) private var customTabStrip = false
-    @AppStorage(SettingsTab.customTabsSamplesKey) private var customTabSamples = false
 
     init(target: Binding<WindowTarget?>) {
         _target = target
         // Read on every init, but `@State` keeps only the first: the one
         // made as this window opens.
+        let pendingHandoff = target.wrappedValue == nil ? WorkspaceTabHandoff.shared.pending : nil
+        if let pendingHandoff {
+            _tabController = State(initialValue: WorkspaceTabController(
+                sessions: pendingHandoff.sessions,
+                selectedID: pendingHandoff.selectedID,
+                pageDocumentFactory: { PageDocument() },
+                editorDocumentFactory: { EditorDocument($0) }
+            ))
+            _handoff = State(initialValue: pendingHandoff)
+            _request = State(initialValue: nil)
+            return
+        }
         let request = target.wrappedValue == nil ? WorkspaceTabs.pending : nil
         let loaded = WindowTarget.opening(target.wrappedValue, requested: request?.target, root: AppModel.shared.root)
         // A restored window's machine is checked once, here, before its
@@ -77,6 +91,7 @@ struct ContentView: View {
             pageDocumentFactory: { PageDocument() },
             editorDocumentFactory: { EditorDocument($0) }
         ))
+        _handoff = State(initialValue: nil)
         _request = State(initialValue: request)
     }
     #endif
@@ -163,17 +178,31 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
         } detail: {
             VStack(spacing: 0) {
-                if customTabStrip {
-                    WorkspaceTabStrip(
-                        tabs: tabController.descriptors,
-                        selectedID: tabController.selectedID,
-                        newMenu: tabNewMenuItems,
-                        onSelect: { tabController.select($0) },
-                        onClose: { tabController.closeTab($0, in: tabController.hostWindow) },
-                        onCloseOthers: { tabController.closeOthers(keeping: $0, in: tabController.hostWindow) }
-                    )
+                WorkspaceTabStrip(
+                    tabs: tabController.descriptors,
+                    selectedID: tabController.selectedID,
+                    newMenu: tabNewMenuItems,
+                    controller: tabController,
+                    onSelect: { tabController.select($0) },
+                    onClose: { tabController.closeTab($0, in: tabController.hostWindow) },
+                    onCloseOthers: { tabController.closeOthers(keeping: $0, in: tabController.hostWindow) },
+                    onMoveToNewWindow: { sessionID in
+                        WorkspaceTabHandoff.shared.detachToNewWindow(
+                            sessionID: sessionID,
+                            from: tabController
+                        )
+                    }
+                )
+                ZStack {
+                    workspace
+                    if tabController.isShowingOverview {
+                        TabOverviewOverlay(
+                            controller: tabController,
+                            newMenu: tabNewMenuItems,
+                            dismiss: { tabController.isShowingOverview = false }
+                        )
+                    }
                 }
-                workspace
             }
         }
         .toolbar {
@@ -193,8 +222,8 @@ struct ContentView: View {
         .modifier(WindowSceneValues(
             place: activePlace,
             folder: activeSidebarRoot,
-            panel: (activeIsTerminal || activeIsSample) ? nil : panel,
-            enabled: !activeIsSample
+            panel: activeIsTerminal ? nil : panel,
+            enabled: true
         ))
         // A notebook's toolbar item draws the title (#867), so the system's
         // title and subtitle go; its tab keeps the display title, from
@@ -219,23 +248,41 @@ struct ContentView: View {
             DispatchQueue.main.async(execute: takeOpenRequests)
         }
         .onAppear {
-            if let initialTab = tabController.sessions.first?.pageTab {
-                if let request {
-                    WorkspaceTabs.take(request)
-                    if target == nil {
-                        target = request.target
-                        initialTab.target = request.target
-                    }
-                } else if target == nil, let saved = WindowTarget(saved: savedTarget) {
-                    // A window the system restored, without its value.
-                    show(saved, in: initialTab)
+            if let handoff {
+                WorkspaceTabHandoff.shared.take(handoff)
+                didRestoreTabs = true
+                if let activePage {
+                    target = activePage.target
                 }
-                // A restored window (its value restored or not) gets its
-                // sidebar's folder back too.
-                if request == nil, WindowTarget(saved: savedTarget) == target {
+            } else if let request {
+                WorkspaceTabs.take(request)
+                didRestoreTabs = true
+                if let initialTab = tabController.sessions.first?.pageTab, target == nil {
+                    target = request.target
+                    initialTab.target = request.target
+                }
+            } else if !didRestoreTabs {
+                didRestoreTabs = true
+                if let restored = RestorableTabSet.resolve(
+                    savedTabs: savedTabs,
+                    legacyTarget: savedTarget,
+                    legacySidebar: savedSidebar
+                ), (!savedTabs.isEmpty || target == nil) {
+                    tabController.restore(
+                        from: restored,
+                        placeResolver: { model.place(for: $0) },
+                        machineNameResolver: { $0.machineID.flatMap(model.machineName(_:)) },
+                        thisMacRootResolver: { model.thisMacRoot(for: $0) },
+                        fallbackRoot: model.root
+                    )
+                    target = activePage?.target
+                } else if let initialTab = tabController.sessions.first?.pageTab,
+                          WindowTarget(saved: savedTarget) == target {
+                    // Legacy restored window whose value already matched savedTarget.
                     restoreSidebar(in: initialTab)
                 }
             }
+            savedTabs = restorableSnapshot
             savedSidebar = FolderEntry.storageKey(activeSidebarRoot)
             savedTarget = WindowTarget.saved(target)
             noteOpenRequests()
@@ -243,11 +290,16 @@ struct ContentView: View {
                 WorkspaceTabs.openTarget(nextTarget) { openWindow(value: $0) }
             }
         }
+        .onChange(of: restorableSnapshot) { _, snapshot in
+            savedTabs = snapshot
+        }
         .onChange(of: target) { _, newTarget in
             noteOpenRequests()
             // Restored after the view was made, before the page said
             // anything: show it, not what the page was loaded for.
             if let newTarget,
+               handoff == nil,
+               savedTabs.isEmpty,
                tabController.sessions.count == 1,
                let onlyPage = activePage,
                !onlyPage.pageReported,
@@ -266,7 +318,7 @@ struct ContentView: View {
                 savedTarget = WindowTarget.saved(activePage.target)
                 savedSidebar = FolderEntry.storageKey(activePage.sidebarRoot)
             }
-            if (activeIsTerminal || activeIsSample) && layout.filled != nil {
+            if activeIsTerminal && layout.filled != nil {
                 layout.restore()
             }
             noteOpenRequests()
@@ -326,17 +378,31 @@ struct ContentView: View {
         .onDisappear {
             model.openRequests.unregister(windowID)
             if let window = tabController.hostWindow {
-                tabController.detachAll(from: window)
+                tabController.detachAll(from: window, retireResources: true)
                 WorkspaceTabs.unregisterController(tabController, for: window)
             }
         }
-        // Notebook windows are tabs too (#247).
+        // Notebook windows are tabs too (#247, #905).
         .background(WindowReader { window in
             tabController.attach(to: window)
             WorkspaceTabs.registerController(tabController, for: window)
             // So a terminal tab can move into this panel (#248).
             panel.attach(to: window)
             WorkspaceTabs.join(window, alone: request?.alone ?? false)
+            if !didPositionHandoff, let dropPoint = handoff?.dropPoint {
+                didPositionHandoff = true
+                let screen = NSScreen.screens.first(where: { $0.frame.contains(dropPoint) })
+                    ?? window.screen
+                    ?? NSScreen.main
+                if let visible = screen?.visibleFrame {
+                    let origin = TabDragGeometry.detachedWindowOrigin(
+                        dropPoint: dropPoint,
+                        windowSize: window.frame.size,
+                        visibleFrame: visible
+                    )
+                    window.setFrameOrigin(origin)
+                }
+            }
             noteWindow(window)
             // A page already running when the window arrives gets its dot.
             WorkspaceTabs.markBusy(window, activePage?.page.state.isBusy ?? false)
@@ -349,6 +415,7 @@ struct ContentView: View {
         .focusedSceneValue(\.pageDocument, activePage?.document)
         .focusedSceneValue(\.pageModel, activePage?.page)
         .focusedSceneValue(\.editorDocument, activeEditor?.document)
+        .focusedSceneValue(\.workspaceTabController, tabController)
     }
 
     /// `macWindow` with the bottom panel and the keyboard kept in step.
@@ -400,7 +467,7 @@ struct ContentView: View {
         .modifier(InspectorAvailability(
             inspector: inspector, shows: showsNotebook, fillsWindow: layout.filled == .inspector
         ) { layout.restore() })
-        .focusedSceneValue(\.windowFill, (activeIsTerminal || activeIsSample) ? nil : WindowFill(filled: layout.filled) {
+        .focusedSceneValue(\.windowFill, activeIsTerminal ? nil : WindowFill(filled: layout.filled) {
             // The area with the keyboard: a panel terminal, or the notebook.
             if layout.filled != nil {
                 layout.restore()
@@ -676,7 +743,7 @@ struct ContentView: View {
     private var activeEditor: EditorTabState? { tabController.activeEditor }
     private var activeTerminal: TerminalTabState? { tabController.activeTerminal }
     private var activeIsTerminal: Bool { activeTerminal != nil }
-    private var activeIsSample: Bool { tabController.activeSession?.isSample == true }
+    private var restorableSnapshot: String { tabController.restorableTabSet.encoded() }
 
     private var activePlace: Place {
         if let activePage {
@@ -709,7 +776,7 @@ struct ContentView: View {
     }
 
     private var isBlankWindow: Bool {
-        tabController.sessions.count == 1 && activePage != nil && activePage?.target == nil
+        handoff == nil && tabController.sessions.count == 1 && activePage != nil && activePage?.target == nil
     }
 
     /// Only this device's windows take the Finder's open requests, and only
@@ -796,7 +863,7 @@ struct ContentView: View {
                     source: source,
                     place: activePlace,
                     page: activePage?.page,
-                    panel: (activeIsTerminal || activeIsSample) ? nil : panel,
+                    panel: activeIsTerminal ? nil : panel,
                     // The column the sidebar's keys bring back (#879): the
                     // window folds it, or an area fills over it.
                     showSidebar: {
@@ -1044,8 +1111,8 @@ struct ContentView: View {
             return .terminal(canMoveToPanel: canMoveTerminalToPanel(tab)) {
                 moveTerminalTabToPanel(tab)
             }
-        case .sampleConsole, .sampleMachine, .sampleTerminal, nil:
-            return .sample
+        case nil:
+            return .empty
         }
     }
 
@@ -1154,13 +1221,11 @@ struct ContentView: View {
     /// The unified tab host ZStack, with the bottom panel under it.
     private var notebookAndPanel: some View {
         GeometryReader { area in
-            let showsPanel = !activeIsTerminal && !activeIsSample
+            let showsPanel = !activeIsTerminal
             let panelShows = showsPanel && layout.shows(.panel, normally: panel.isShown)
             let panelFills = showsPanel && layout.filled == .panel
             VStack(spacing: 0) {
                 WorkspaceTabHost(
-                    enabled: customTabStrip,
-                    samples: customTabSamples,
                     controller: tabController,
                     onOpenFile: openFile,
                     onOpenTabRequest: openTab
@@ -1187,13 +1252,13 @@ struct ContentView: View {
                     shown: panelShows,
                     fills: panelFills,
                     toggleFill: { layout.toggle(.panel) },
-                    onMoveToTab: customTabStrip ? { request in
+                    onMoveToTab: { request in
                         tabController.addTerminalTab(
                             target: request.target,
                             handoffID: request.id,
                             sidebarRoot: activeSidebarRoot
                         )
-                    } : nil
+                    }
                 )
                     // Top-aligned, so a hidden panel's views (AppKit cursor
                     // rects included) sit below the window, not over the notebook.

@@ -3,11 +3,9 @@ import AppKit
 import SwiftUI
 
 /// Renders all window tab sessions inside a single `ZStack` (preserving
-/// per-tab `WKWebView`, editor, and terminal lifetimes across switches and
-/// when toggling the custom tab strip) (#904).
+/// per-tab `WKWebView`, editor, and terminal lifetimes across tab switches,
+/// in-strip reordering, and cross-window handoff) (#904, #905).
 struct WorkspaceTabHost: View {
-    let enabled: Bool
-    let samples: Bool
     var controller: WorkspaceTabController
     let onOpenFile: (String, Place) -> Void
     let onOpenTabRequest: (TabRequest) -> Void
@@ -27,24 +25,9 @@ struct WorkspaceTabHost: View {
         .background(
             WindowReader { window in
                 hostWindow.window = window
-                syncWindowRegistration(window)
+                registerHost(window)
             }
         )
-        .onChange(of: enabled, initial: true) { wasEnabled, active in
-            controller.syncSampleTabs(enabled: active && samples)
-            if let window = hostWindow.window {
-                syncWindowRegistration(window)
-                if active {
-                    WorkspaceTabs.join(window)
-                } else if wasEnabled {
-                    window.tabbingIdentifier = WorkspaceTabs.identifier
-                    window.tabbingMode = .preferred
-                }
-            }
-        }
-        .onChange(of: samples) { _, show in
-            controller.syncSampleTabs(enabled: enabled && show)
-        }
         .onChange(of: controller.selectedID) { oldID, newID in
             guard oldID != newID, let window = hostWindow.window else { return }
             handleTabSwitchFocus(from: oldID, to: newID, in: window)
@@ -62,7 +45,6 @@ struct WorkspaceTabHost: View {
         case .page(let tab):
             PageTabContentView(
                 tab: tab,
-                showMachineHeader: enabled,
                 onOpenFile: onOpenFile,
                 onOpenTabRequest: onOpenTabRequest,
                 onSyncDescriptor: { place, machineName in
@@ -96,47 +78,37 @@ struct WorkspaceTabHost: View {
                     controller.syncEditorTab(id: session.id, machineName: machineName)
                 }
             )
-        case .sampleConsole:
-            SampleConsoleSurface()
-        case .sampleMachine(let name):
-            SampleMachineSurface(name: name)
-        case .sampleTerminal:
-            SampleTerminalSurface()
         }
     }
 
-    private func syncWindowRegistration(_ window: NSWindow) {
-        if enabled {
-            WorkspaceTabs.registerCustomTabHost(
-                for: window,
-                actions: WorkspaceTabs.CustomTabActions(
-                    closeActiveTab: {
-                        guard controller.canCloseInPlace else { return false }
-                        controller.closeTab(controller.selectedID, in: window)
-                        return true
-                    },
-                    openNewTab: { newTarget in
-                        openTargetInWindow(newTarget, reuseExisting: false)
-                    },
-                    selectNextTab: { controller.selectNext() },
-                    selectPreviousTab: { controller.selectPrevious() },
-                    openTab: { newTarget, reuseExisting in
-                        openTargetInWindow(newTarget, reuseExisting: reuseExisting)
-                    },
-                    openEditor: { request in
-                        openEditorInWindow(request)
-                    },
-                    openTerminal: { request in
-                        openTerminalInWindow(request)
-                    },
-                    newNotebook: { serverFolder in
-                        openNewNotebookInWindow(serverFolder: serverFolder)
-                    }
-                )
+    private func registerHost(_ window: NSWindow) {
+        WorkspaceTabs.registerCustomTabHost(
+            for: window,
+            actions: WorkspaceTabs.CustomTabActions(
+                closeActiveTab: {
+                    guard controller.canCloseInPlace else { return false }
+                    controller.closeTab(controller.selectedID, in: window)
+                    return true
+                },
+                openNewTab: { newTarget in
+                    openTargetInWindow(newTarget, reuseExisting: false)
+                },
+                selectNextTab: { controller.selectNext() },
+                selectPreviousTab: { controller.selectPrevious() },
+                openTab: { newTarget, reuseExisting in
+                    openTargetInWindow(newTarget, reuseExisting: reuseExisting)
+                },
+                openEditor: { request in
+                    openEditorInWindow(request)
+                },
+                openTerminal: { request in
+                    openTerminalInWindow(request)
+                },
+                newNotebook: { serverFolder in
+                    openNewNotebookInWindow(serverFolder: serverFolder)
+                }
             )
-        } else {
-            WorkspaceTabs.unregisterCustomTabHost(for: window)
-        }
+        )
     }
 
     private func openTargetInWindow(_ target: WindowTarget, reuseExisting: Bool) -> Bool {
@@ -235,8 +207,6 @@ struct WorkspaceTabHost: View {
                 window.makeFirstResponder(tab.document.textView)
             case .terminal:
                 break
-            case .sampleConsole, .sampleMachine, .sampleTerminal:
-                window.makeFirstResponder(nil)
             }
         }
     }
@@ -252,8 +222,6 @@ struct WorkspaceTabHost: View {
             return view === textView || view.isDescendant(of: textView)
         case .terminal:
             return String(describing: type(of: view)).contains("TerminalView")
-        case .sampleConsole, .sampleMachine, .sampleTerminal:
-            return false
         }
     }
 }
@@ -265,10 +233,11 @@ private struct TerminalTabSurface: View {
     }
 }
 
-/// Live web-view pane for every `.page` tab inside `WorkspaceTabHost` (#904).
+/// Live web-view pane for every `.page` tab inside `WorkspaceTabHost` (#904, #905).
+/// Backed by a `PageWebViewStore` owned by `PageTabState` so cross-window
+/// detaching, docking, and merging reparent the live `WKWebView` without reloading.
 private struct PageTabContentView: View {
     let tab: PageTabState
-    let showMachineHeader: Bool
     let onOpenFile: (String, Place) -> Void
     let onOpenTabRequest: (TabRequest) -> Void
     let onSyncDescriptor: (Place, String?) -> Void
@@ -292,9 +261,26 @@ private struct PageTabContentView: View {
     }
 
     private var showsMachineHeader: Bool {
-        guard showMachineHeader, place.isMachine else { return false }
+        guard place.isMachine else { return false }
         if case .machineFolder = tab.effectiveTarget { return !tab.page.state.hasNotebook }
         return false
+    }
+
+    private var webViewStore: PageWebViewStore {
+        if let existing = tab.webViewStore as? PageWebViewStore,
+           existing.pagePlace == tab.pagePlace {
+            return existing
+        }
+        tab.retireWebView()
+        let created = PageWebViewStore(
+            pagePlace: tab.pagePlace,
+            place: place,
+            sharesName: model.sharesName(for: place),
+            usesDevice: model.usesDevice(for: place),
+            pageRoot: model.pageRoot(for: place)
+        )
+        tab.webViewStore = created
+        return created
     }
 
     var body: some View {
@@ -302,8 +288,7 @@ private struct PageTabContentView: View {
             if showsMachineHeader {
                 MachineSurfaceHeader(
                     name: machineName ?? "Machine",
-                    reachable: PlaceReachability.shared.isReachable(place),
-                    isSample: false
+                    reachable: PlaceReachability.shared.isReachable(place)
                 )
             }
             Group {
@@ -323,7 +308,8 @@ private struct PageTabContentView: View {
                         pageRoot: model.pageRoot(for: place),
                         onLoad: {
                             tab.readPlace(currentPlace: currentPlace, thisMacRoot: { model.thisMacRoot(for: $0) })
-                        }
+                        },
+                        store: webViewStore
                     )
                     .id(tab.pagePlace)
                 } else if model.error != nil {

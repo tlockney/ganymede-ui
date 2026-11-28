@@ -2,9 +2,9 @@
 import AppKit
 import SwiftUI
 
-/// Dynamic colors for the Step 6 custom tab strip (#903), matching
-/// `docs/design/mac-visual-redesign/boards/E-Tabs.png` and `E-Mac.png` in
-/// both dark and light appearances.
+/// Dynamic colors for the Mac custom tab strip (#844 Step 6, #903, #905),
+/// matching `docs/design/mac-visual-redesign/boards/E-Tabs.png` and `E-Mac.png`
+/// in both dark and light appearances.
 struct TabStripPalette {
     let colorScheme: ColorScheme
 
@@ -136,23 +136,44 @@ struct TabNewMenuItems {
     let onOpenMachine: (PlaceEntry) -> Void
 }
 
-/// Custom Mac tab strip prototype (#844 Step 6, #903): renders the taller,
+private struct TabChipFramesPreferenceKey: PreferenceKey {
+    static let defaultValue: [UUID: CGRect] = [:]
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+/// Custom Mac tab strip (#844 Step 6, #903, #905): renders the taller,
 /// flat-bottomed, page-joined active tab with its 1.5pt colored top edge
 /// alongside distinct silhouettes for inactive notebooks, outlined machine
-/// capsules, and dark mono terminal chips.
+/// capsules, and dark mono terminal chips; supports in-strip drag-reorder,
+/// drag-out to detach into a new window, cross-window docking, and native
+/// window dragging across empty trough space.
 struct WorkspaceTabStrip: View {
     let tabs: [WorkspaceTabDescriptor]
     let selectedID: UUID?
     let newMenu: TabNewMenuItems
+    var controller: WorkspaceTabController? = nil
     let onSelect: (UUID) -> Void
     let onClose: (UUID) -> Void
     let onCloseOthers: (UUID) -> Void
+    var onMoveToNewWindow: ((UUID) -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
+    @State private var tabFrames: [UUID: CGRect] = [:]
+    @State private var stripSize: CGSize = .zero
+    @State private var anchorBox = StripAnchorBox()
+    @State private var registeredWindowNumber: Int?
 
+    private var dragCoordinator: TabDragCoordinator { TabDragCoordinator.shared }
     private var palette: TabStripPalette { TabStripPalette(colorScheme: colorScheme) }
 
     var body: some View {
+        let localDropX = resolvedLocalDropIndicatorX()
+        let isDockHighlighted = anchorBox.view?.window.map {
+            dragCoordinator.isTargetHighlight(windowNumber: $0.windowNumber)
+        } ?? false
+
         GeometryReader { geo in
             let layout = TabStripLayout.compute(
                 tabs: tabs,
@@ -170,11 +191,24 @@ struct WorkspaceTabStrip: View {
                                     tab: tab,
                                     isSelected: tab.id == selectedID,
                                     canClose: tabs.count > 1 && tab.isCloseable,
+                                    canMoveToNewWindow: tabs.count > 1 && onMoveToNewWindow != nil,
+                                    isDragging: dragCoordinator.isDragging(tabID: tab.id),
                                     allocatedWidth: width,
                                     palette: palette,
                                     onSelect: { onSelect(tab.id) },
                                     onClose: { onClose(tab.id) },
-                                    onCloseOthers: { onCloseOthers(tab.id) }
+                                    onCloseOthers: { onCloseOthers(tab.id) },
+                                    onMoveToNewWindow: { onMoveToNewWindow?(tab.id) },
+                                    onDragChanged: { handleDragChanged(tab: tab) },
+                                    onDragEnded: { handleDragEnded() }
+                                )
+                                .background(
+                                    GeometryReader { chipGeo in
+                                        Color.clear.preference(
+                                            key: TabChipFramesPreferenceKey.self,
+                                            value: [tab.id: chipGeo.frame(in: .named("TabStripSpace"))]
+                                        )
+                                    }
                                 )
                                 .id(tab.id)
 
@@ -203,16 +237,110 @@ struct WorkspaceTabStrip: View {
                 }
 
                 plusButton
+
+                // Empty trailing trough space acts as a native window drag region (#905).
+                WindowDragArea()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .padding(.leading, TabStripLayout.leadingPadding)
             .padding(.trailing, TabStripLayout.trailingPadding)
             .frame(width: geo.size.width, height: TabStripLayout.stripHeight, alignment: .bottomLeading)
+            .onChange(of: geo.size, initial: true) { _, newSize in
+                stripSize = newSize
+            }
         }
+        .coordinateSpace(name: "TabStripSpace")
         .frame(height: TabStripLayout.stripHeight)
-        .background(palette.troughBackground)
+        .background(
+            ZStack {
+                palette.troughBackground
+                StripAnchorRepresentable(box: anchorBox) { window in
+                    registerStrip(in: window)
+                }
+            }
+        )
+        .overlay(alignment: .leading) {
+            if let x = localDropX {
+                Capsule()
+                    .fill(Color("AccentFill"))
+                    .frame(width: 2.5, height: TabStripLayout.stripHeight - 10)
+                    .offset(x: max(2, min(x - 1.25, max(2, stripSize.width - 4.5))))
+                    .allowsHitTesting(false)
+            }
+        }
+        .overlay {
+            if isDockHighlighted {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(Color("AccentFill").opacity(0.7), lineWidth: 1.5)
+                    .padding(2)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onPreferenceChange(TabChipFramesPreferenceKey.self) { frames in
+            tabFrames = frames
+        }
+        .onDisappear {
+            if let num = registeredWindowNumber {
+                dragCoordinator.unregisterStrip(windowNumber: num)
+                registeredWindowNumber = nil
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isTabBar)
         .accessibilityLabel("Open tabs")
+    }
+
+    private func registerStrip(in window: NSWindow) {
+        guard let controller else { return }
+        if let old = registeredWindowNumber, old != window.windowNumber {
+            dragCoordinator.unregisterStrip(windowNumber: old)
+        }
+        registeredWindowNumber = window.windowNumber
+        let box = anchorBox
+        dragCoordinator.registerStrip(window: window, controller: controller) {
+            guard let anchor = box.view, let win = anchor.window else { return nil }
+            let stripRectInWindow = anchor.convert(anchor.bounds, to: nil)
+            let stripScreenRect = win.convertToScreen(stripRectInWindow)
+            let slots: [TabDragGeometry.TabSlot] = tabs.compactMap { tab in
+                guard let localRect = tabFrames[tab.id] else { return nil }
+                let inWindow = anchor.convert(localRect, to: nil)
+                let inScreen = win.convertToScreen(inWindow)
+                return TabDragGeometry.TabSlot(id: tab.id, frame: inScreen)
+            }
+            return TabDragGeometry.TargetStrip(
+                windowID: win.windowNumber,
+                stripFrame: stripScreenRect,
+                tabFrames: slots
+            )
+        }
+    }
+
+    private func handleDragChanged(tab: WorkspaceTabDescriptor) {
+        guard let controller, let window = anchorBox.view?.window else { return }
+        if dragCoordinator.activeDrag == nil {
+            dragCoordinator.beginDrag(
+                tabID: tab.id,
+                descriptor: tab,
+                in: window,
+                controller: controller
+            )
+        }
+        dragCoordinator.updateDrag(screenPoint: NSEvent.mouseLocation)
+    }
+
+    private func handleDragEnded() {
+        dragCoordinator.endDrag(screenPoint: NSEvent.mouseLocation)
+    }
+
+    private func resolvedLocalDropIndicatorX() -> CGFloat? {
+        guard let anchor = anchorBox.view,
+              let window = anchor.window,
+              dragCoordinator.targetWindowID == window.windowNumber,
+              let screenX = dragCoordinator.indicatorScreenX
+        else { return nil }
+        let windowPoint = window.convertPoint(fromScreen: NSPoint(x: screenX, y: window.frame.midY))
+        let localPoint = anchor.convert(windowPoint, from: nil)
+        return localPoint.x
     }
 
     private var plusButton: some View {
@@ -253,15 +381,83 @@ struct WorkspaceTabStrip: View {
     }
 }
 
+/// Weak reference container for the tab strip's flipped AppKit anchor view.
+@MainActor
+private final class StripAnchorBox {
+    weak var view: StripAnchorNSView?
+}
+
+/// Flipped `NSView` matching SwiftUI's top-left coordinate system so strip and
+/// tab rects convert accurately to AppKit screen coordinates and empty trough
+/// areas support native window dragging (#905).
+private final class StripAnchorNSView: NSView {
+    var onWindow: ((NSWindow) -> Void)?
+
+    override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let window { onWindow?(window) }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
+    }
+}
+
+private struct StripAnchorRepresentable: NSViewRepresentable {
+    let box: StripAnchorBox
+    let onWindow: (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> StripAnchorNSView {
+        let view = StripAnchorNSView()
+        view.onWindow = onWindow
+        box.view = view
+        return view
+    }
+
+    func updateNSView(_ view: StripAnchorNSView, context: Context) {
+        view.onWindow = onWindow
+        box.view = view
+        if let window = view.window {
+            onWindow(window)
+        }
+    }
+}
+
+/// Transparent trailing trough spacer that lets users drag the window from the
+/// unoccupied area to the right of the `+` button without interfering with tab
+/// clicks, horizontal scroll, or tab drag-reorder/detach (#905).
+private struct WindowDragArea: NSViewRepresentable {
+    final class DragView: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
+        override func mouseDown(with event: NSEvent) {
+            window?.performDrag(with: event)
+        }
+    }
+
+    func makeNSView(context: Context) -> DragView {
+        DragView()
+    }
+
+    func updateNSView(_ nsView: DragView, context: Context) {}
+}
+
 private struct TabChipView: View {
     let tab: WorkspaceTabDescriptor
     let isSelected: Bool
     let canClose: Bool
+    let canMoveToNewWindow: Bool
+    let isDragging: Bool
     let allocatedWidth: CGFloat?
     let palette: TabStripPalette
     let onSelect: () -> Void
     let onClose: () -> Void
     let onCloseOthers: () -> Void
+    let onMoveToNewWindow: () -> Void
+    let onDragChanged: () -> Void
+    let onDragEnded: () -> Void
 
     @State private var hovering = false
 
@@ -330,10 +526,23 @@ private struct TabChipView: View {
         .frame(width: allocatedWidth, height: chipHeight, alignment: .leading)
         .background(tabBackground)
         .contentShape(Rectangle())
+        .opacity(isDragging ? 0.45 : 1)
         .padding(.bottom, bottomInset)
+        .gesture(
+            DragGesture(
+                minimumDistance: TabDragGeometry.activationDistance,
+                coordinateSpace: .named("TabStripSpace")
+            )
+            .onChanged { _ in onDragChanged() }
+            .onEnded { _ in onDragEnded() }
+        )
         .onHover { hovering = $0 }
         .help(tab.toolTip)
         .contextMenu {
+            if canMoveToNewWindow {
+                Button("Move Tab to New Window", action: onMoveToNewWindow)
+                Divider()
+            }
             if canClose {
                 Button("Close Tab", action: onClose)
                 Button("Close Other Tabs", action: onCloseOthers)
@@ -446,7 +655,6 @@ private struct TabChipView: View {
 struct MachineSurfaceHeader: View {
     let name: String
     let reachable: Bool
-    let isSample: Bool
 
     @Environment(\.colorScheme) private var colorScheme
     private var palette: TabStripPalette { TabStripPalette(colorScheme: colorScheme) }
@@ -456,7 +664,7 @@ struct MachineSurfaceHeader: View {
             Text(name)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(palette.activeText(for: .machine))
-            Text(statusSubtitle)
+            Text(reachable ? "connected machine" : "offline · reconnecting")
                 .font(.system(size: 12))
                 .foregroundStyle(palette.machineHeaderSecondaryText)
             Spacer(minLength: 0)
@@ -474,115 +682,6 @@ struct MachineSurfaceHeader: View {
                 .frame(height: 0.5)
         }
     }
-
-    private var statusSubtitle: String {
-        if isSample { return "ganymede-server · sample machine surface" }
-        return reachable ? "connected machine" : "offline · reconnecting"
-    }
-}
-
-/// Lightweight sample machine surface shown when Developer Settings' sample
-/// tabs toggle is active (#903).
-struct SampleMachineSurface: View {
-    let name: String
-
-    @Environment(\.colorScheme) private var colorScheme
-    private var palette: TabStripPalette { TabStripPalette(colorScheme: colorScheme) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            MachineSurfaceHeader(name: name, reachable: true, isSample: true)
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
-                    sampleCard(title: "Python 3.13", detail: "training.ipynb · busy")
-                    sampleCard(title: "TypeScript", detail: "idle · 212 MB")
-                    sampleCard(title: "Files", detail: "~/src/personal")
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(palette.activeSurface(for: .machine))
-        }
-    }
-
-    private func sampleCard(title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(palette.activeText(for: .machine))
-            Text(detail)
-                .font(.system(size: 12))
-                .foregroundStyle(palette.machineHeaderSecondaryText)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(palette.machineCardFill)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(palette.machineCardBorder, lineWidth: 0.5)
-                )
-        )
-    }
-}
-
-/// Lightweight sample console surface shown when Developer Settings' sample
-/// tabs toggle is active (#903).
-struct SampleConsoleSurface: View {
-    @Environment(\.colorScheme) private var colorScheme
-    private var palette: TabStripPalette { TabStripPalette(colorScheme: colorScheme) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("DUCKDB CONSOLE · SAMPLE")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundStyle(Color("AccentFill"))
-            Text("DuckDB console")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(palette.activeText(for: .notebook))
-            Text("SELECT date_trunc('year', date) AS year, avg(total) FROM 'fremont.parquet' GROUP BY 1;")
-                .font(.system(size: 12.5, design: .monospaced))
-                .foregroundStyle(palette.activeText(for: .notebook).opacity(0.85))
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.primary.opacity(0.05))
-                )
-            Spacer(minLength: 0)
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(palette.activeSurface(for: .notebook))
-    }
-}
-
-/// Lightweight sample terminal surface shown when Developer Settings' sample
-/// tabs toggle is active (#903).
-struct SampleTerminalSurface: View {
-    @Environment(\.colorScheme) private var colorScheme
-    private var palette: TabStripPalette { TabStripPalette(colorScheme: colorScheme) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("~/src/personal $ ganymede kernels")
-                .foregroundStyle(palette.activeText(for: .terminal))
-            Text("ID        NAME         STATE  NOTEBOOK")
-                .foregroundStyle(palette.activeText(for: .terminal).opacity(0.8))
-            Text("3f1c…     typescript   idle   2026-11-09-fremont-bridge.ipynb")
-                .foregroundStyle(palette.activeText(for: .terminal).opacity(0.8))
-            Text("~/src/personal $ _")
-                .foregroundStyle(palette.terminalPrompt(selected: true))
-            Spacer(minLength: 0)
-        }
-        .font(.system(size: 12.5, design: .monospaced))
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(palette.activeSurface(for: .terminal))
-    }
 }
 
 #Preview("Dark · 1280") {
@@ -594,8 +693,7 @@ struct SampleTerminalSurface: View {
             toolTip: "2026-11-09-fremont-bridge.ipynb",
             badge: TabLanguageBadge(code: "TS", palette: .typescript),
             kernelKind: .idle,
-            kernelLabel: "Kernel idle",
-            isPrimary: true
+            kernelLabel: "Kernel idle"
         ),
         WorkspaceTabDescriptor(
             id: UUID(),
@@ -637,8 +735,7 @@ struct SampleTerminalSurface: View {
             toolTip: "2026-11-09-fremont-bridge.ipynb",
             badge: TabLanguageBadge(code: "TS", palette: .typescript),
             kernelKind: .idle,
-            kernelLabel: "Kernel idle",
-            isPrimary: true
+            kernelLabel: "Kernel idle"
         ),
         .machine(id: UUID(), name: "m4mini"),
         .terminal(id: UUID(), title: "zsh"),

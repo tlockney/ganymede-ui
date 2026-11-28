@@ -109,18 +109,18 @@ struct NavigatorSidebar: View {
                 panel: panel)
         }
         .background {
-            // ⌘4 and ⌘⇧F, and the capsule's own keys (#879): a key shows
+            // ⌥⌘4 and ⌘⇧F, and the capsule's own keys (#879, #905): a key shows
             // its navigator, so the column comes back first when the window
-            // has it hidden. ⌘4 was Outline's key and still opens Find;
-            // ⌘⇧F opens Find and puts the cursor in its field, as a Mac
-            // app's Find does.
+            // has it hidden. ⌥⌘4 was Outline's key (moved from ⌘4 when workspace
+            // tabs took ⌘1–⌘9) and still opens Find; ⌘⇧F opens Find and puts the
+            // cursor in its field, as a Mac app's Find does.
             Group {
                 Button("Find") {
                     showSidebar()
                     findFocus.clear()
                     tab = .find
                 }
-                .keyboardShortcut("4", modifiers: .command)
+                .keyboardShortcut("4", modifiers: [.command, .option])
                 Button("Find in Notebook") {
                     showSidebar()
                     tab = .find
@@ -159,7 +159,7 @@ struct NavigatorSidebar: View {
                 // itself is hidden from VoiceOver.
                 .accessibilityValue(item == .running ? NavigatorTab.runningValue(running) : "")
                 .accessibilityAddTraits(shownTab == item ? .isSelected : [])
-                .keyboardShortcut(item.shortcut, modifiers: .command)
+                .keyboardShortcut(item.shortcut, modifiers: NavigatorTab.shortcutModifiers(for: .mac))
                 .overlay(alignment: .topTrailing) { badge(item) }
             }
         }
