@@ -563,6 +563,82 @@ final class KernelProviderClientTests: XCTestCase {
         XCTAssertTrue(manager.activeKeys.isEmpty)
     }
 
+    @MainActor
+    func testManagerTokenReplacementIgnoresOldClientDisconnect() async throws {
+        let listener = try TempUnixListener()
+        defer { listener.close() }
+
+        var detachedCount = 0
+        var connectCount = 0
+        let manager = KernelProviderManager(
+            retryDelays: [.milliseconds(40), .milliseconds(80)],
+            onKernelEvent: { _, _, _ in },
+            onDetach: { _ in detachedCount += 1 },
+            makeClient: { server, socketPath, onEvent, onStateChange in
+                connectCount += 1
+                return try KernelProviderClient(
+                    socketPath: socketPath, token: server.token,
+                    spec: AppKernels.providerSpec, onEvent: onEvent, onStateChange: onStateChange)
+            })
+
+        let key = KernelProviderManager.ConnectionKey(pid: 3003, socketPath: listener.path)
+        let serverOld = ThisMacServer(
+            pid: 3003, url: URL(string: "http://127.0.0.1:8888/")!, token: "tok-old",
+            root: URL(fileURLWithPath: "/Users/me", isDirectory: true), version: "0.18.0",
+            kernelProvidersSocket: listener.path)
+        let serverNew = ThisMacServer(
+            pid: 3003, url: URL(string: "http://127.0.0.1:8888/")!, token: "tok-new",
+            root: URL(fileURLWithPath: "/Users/me", isDirectory: true), version: "0.18.0",
+            kernelProvidersSocket: listener.path)
+
+        // Initial connection with tok-old.
+        manager.sync(servers: [serverOld])
+        let acceptedOld = await listener.acceptAsync()
+        let peerOld = try XCTUnwrap(acceptedOld)
+        defer { Darwin.close(peerOld) }
+        let helloOld = try readJSONLine(from: peerOld)
+        XCTAssertEqual(helloOld["token"] as? String, "tok-old")
+        try writeJSONLine(["op": "welcome"], to: peerOld)
+        _ = try readJSONLine(from: peerOld) // register
+        try writeJSONLine(["op": "registered", "name": "cdp-browser"], to: peerOld)
+        await eventually("registered with old token") {
+            manager.state(for: key) == .registered(name: "cdp-browser")
+        }
+
+        // Replace connection on the SAME ConnectionKey with a rotated token.
+        // teardown() disconnects the old client asynchronously, then connect()
+        // immediately installs the replacement client under the same key.
+        manager.sync(servers: [serverNew])
+
+        // Old peer should receive unregister while the new peer connects with tok-new.
+        let unreg = try readJSONLine(from: peerOld)
+        XCTAssertEqual(unreg["op"] as? String, "unregister")
+        XCTAssertEqual(unreg["name"] as? String, "cdp-browser")
+
+        let acceptedNew = await listener.acceptAsync()
+        let peerNew = try XCTUnwrap(acceptedNew)
+        defer { Darwin.close(peerNew) }
+        let helloNew = try readJSONLine(from: peerNew)
+        XCTAssertEqual(helloNew["token"] as? String, "tok-new")
+        try writeJSONLine(["op": "welcome"], to: peerNew)
+        _ = try readJSONLine(from: peerNew) // register
+        try writeJSONLine(["op": "registered", "name": "cdp-browser"], to: peerNew)
+
+        await eventually("registered with new token") {
+            manager.state(for: key) == .registered(name: "cdp-browser")
+        }
+
+        // Let any queued MainActor callbacks from the old client's teardown drain;
+        // the replacement connection must stay registered with no extra detach or retry.
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(manager.activeKeys, [key])
+        XCTAssertEqual(manager.state(for: key), .registered(name: "cdp-browser"))
+        XCTAssertEqual(detachedCount, 1)
+        XCTAssertEqual(connectCount, 2)
+
+        manager.disconnectAll(synchronous: true)
+    }
+
     // MARK: - ThisMacVerifier & ThisMacChecks Discovery Tests
 
     func testVerifierReadsKernelProvidersSocketFromServerInfo() throws {

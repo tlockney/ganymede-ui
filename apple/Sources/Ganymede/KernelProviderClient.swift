@@ -451,8 +451,10 @@ final class KernelProviderClient: KernelSink, @unchecked Sendable {
     }
 
     deinit {
-        // If `start()` was never called, close the raw fd directly.
-        if readSource == nil && fd >= 0 {
+        handshakeTimer?.cancel()
+        if let source = readSource {
+            source.cancel()
+        } else if fd >= 0 {
             Darwin.close(fd)
             fd = -1
         }
@@ -474,10 +476,12 @@ final class KernelProviderClient: KernelSink, @unchecked Sendable {
     }
 
     /// Cleanly disconnects from the server, optionally sending `unregister`
-    /// first while still registered. Idempotent.
+    /// first while still registered. Idempotent. Captures `self` strongly so
+    /// fire-and-forget teardown (`connections.removeValue` + `disconnect()`)
+    /// always finishes writing `unregister` and cancelling `readSource`.
     func disconnect(sendUnregister: Bool = true) {
-        ioQueue.async { [weak self] in
-            self?.closeOnIOQueue(reason: nil, sendUnregister: sendUnregister)
+        ioQueue.async {
+            self.closeOnIOQueue(reason: nil, sendUnregister: sendUnregister)
         }
     }
 
@@ -747,6 +751,7 @@ final class KernelProviderManager {
     ) throws -> KernelProviderClient
 
     private struct Connection {
+        let id: UUID
         let token: String
         let root: URL
         let client: KernelProviderClient
@@ -763,18 +768,19 @@ final class KernelProviderManager {
     private var retryAttempts: [ConnectionKey: Int] = [:]
 
     /// Default initializer wired to `AppKernels.shared` over real Unix sockets.
+    /// `AppKernels.shared` is looked up lazily so `AppModel.init()` does not
+    /// eagerly create the WebView pool when no background server is present.
     init(
         kernels: AppKernels? = nil,
         retryDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8)],
         makeClient: ClientFactory? = nil
     ) {
-        let targetKernels = kernels ?? AppKernels.shared
         self.retryDelays = retryDelays
         self.onKernelEvent = { event, sink, root in
-            targetKernels.handle(event, from: sink, notebookRoot: root)
+            (kernels ?? AppKernels.shared).handle(event, from: sink, notebookRoot: root)
         }
         self.onDetach = { sink in
-            targetKernels.detach(sink)
+            (kernels ?? AppKernels.shared).detach(sink)
         }
         self.makeClient = makeClient ?? { server, socketPath, onEvent, onStateChange in
             try KernelProviderClient(
@@ -857,23 +863,25 @@ final class KernelProviderManager {
 
     private func connect(key: ConnectionKey, server: ThisMacServer) {
         let root = server.root
+        let connectionID = UUID()
         let eventHandler: KernelProviderClient.EventHandler = { [weak self] event, client in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    self?.onKernelEvent(event, client, root)
+                    guard let self, self.connections[key]?.id == connectionID else { return }
+                    self.onKernelEvent(event, client, root)
                 }
             }
         }
         let stateHandler: KernelProviderClient.StateHandler = { [weak self] newState in
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    self?.handleStateChange(newState, for: key)
+                    self?.handleStateChange(newState, for: key, connectionID: connectionID)
                 }
             }
         }
         do {
             let client = try makeClient(server, key.socketPath, eventHandler, stateHandler)
-            connections[key] = Connection(token: server.token, root: root, client: client)
+            connections[key] = Connection(id: connectionID, token: server.token, root: root, client: client)
             client.start()
         } catch {
             NSLog("Ganymede: could not connect kernel provider socket %@: %@", key.socketPath, error.localizedDescription)
@@ -881,8 +889,10 @@ final class KernelProviderManager {
         }
     }
 
-    private func handleStateChange(_ state: KernelProviderClient.State, for key: ConnectionKey) {
-        guard let conn = connections[key] else { return }
+    private func handleStateChange(
+        _ state: KernelProviderClient.State, for key: ConnectionKey, connectionID: UUID
+    ) {
+        guard let conn = connections[key], conn.id == connectionID else { return }
         switch state {
         case .registered:
             retryAttempts[key] = 0
