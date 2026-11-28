@@ -93,7 +93,8 @@ final class JupyterTerminalTransport: TerminalTransport {
     let endpoint: ServerEndpoint
     /// The terminal's name on the server, once created.
     private(set) var name: String?
-    private let cwd: String?
+    /// The folder the shell starts in: a path on the server, nil for its root.
+    let cwd: String?
     private let session: URLSession
     private var socket: URLSessionWebSocketTask?
     private var size: (cols: Int, rows: Int)?

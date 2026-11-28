@@ -1,12 +1,12 @@
 ## 2026-11-26, Terminals in a machine's window (#858)
 
 A machine's window has a bottom panel and File > New Terminal, but both were
-gated on `Place.allows(.localTerminal)`, whose meaning was "a shell on this
-Mac". The gate was right about the meaning and wrong about the panel: the
+gated on `Place.allows` for this device's own terminal, a capability whose
+meaning was "a shell on this Mac" (removed in #860, once nothing read it).
+The gate was right about the meaning and wrong about the panel: the
 panel is the window's, and only its _first_ shell came from here. So the
-capability stays what it says — this device's own server — and the question
-the commands actually ask is a different one, "what does a new terminal in
-this window run on", which `Place.terminalTarget(notebook:fallbackFolder:remotes:)`
+question the commands actually ask is a different one, "what does a new
+terminal in this window run on", which `Place.terminalTarget(notebook:fallbackFolder:remotes:)`
 answers: `.local(folder:)` for this device, `.server(id, folder:)` for a machine
 whose remote is still saved with a server, nil otherwise (removed, SSH only,
 or an id the app doesn't know). It picks the folder too, in one place both
