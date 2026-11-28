@@ -195,6 +195,10 @@ test('desktop: expands long source with live edits and expands tables past 32em'
 
 test.describe('touch and narrow responsive layouts (#822)', () => {
   test.use({ hasTouch: true, isMobile: true });
+  test.skip(
+    ({ browserName }) => browserName === 'webkit',
+    'Blocked by compact touch tap shifting inactive-cell button in WebKit (#928)',
+  );
 
   test('390px iPhone: opens from inactive cell tap, cell menu, and table without overflow', async ({
     page,

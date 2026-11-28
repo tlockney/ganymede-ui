@@ -1,0 +1,59 @@
+name: WebKit e2e
+
+# Nightly + manual WebKit E2E run on macOS covering Desktop Safari, iPad, and
+# iPhone viewports (#918). Kept off PR CI so macOS runners stay focused on the
+# native app builds.
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  e2e-webkit:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install Ganymede and cdp-kernel (same pins as ci.yml)
+        run: |
+          set -euo pipefail
+          GANYMEDE_VERSION=$(awk '/^[[:space:]]*GANYMEDE_VERSION:/{print $2; exit}' .github/workflows/ci.yml)
+          CDP_KERNEL_VERSION=$(awk '/^[[:space:]]*CDP_KERNEL_VERSION:/{print $2; exit}' .github/workflows/ci.yml)
+          curl -fsSL "https://raw.githubusercontent.com/tlockney/ganymede/v$GANYMEDE_VERSION/site/install.sh" \
+            | sh -s -- --version "$GANYMEDE_VERSION" --no-kernel --bin-dir "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          npm install -g "@tlockney/cdp-kernel@$CDP_KERNEL_VERSION"
+          cdp-kernel install --runtime node
+          "$HOME/.local/bin/ganymede" --version
+          "$HOME/.local/bin/ganymede" kernelspec list
+      - run: npm ci
+      - run: npm run build
+      - id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}-webkit
+      - run: npx playwright install webkit
+      - run: npm run e2e:webkit -- --global-timeout=1200000
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-webkit-test-results
+          path: |
+            test-results
+            playwright-report
+          retention-days: 14

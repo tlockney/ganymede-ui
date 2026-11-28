@@ -14,7 +14,14 @@ import {
 test.use({ deviceScaleFactor: 2 });
 
 for (const colorScheme of ['light', 'dark'] as const) {
-  test(`runs JavaScript in a Web Worker (${colorScheme})`, async ({ page }, testInfo) => {
+  test(`runs JavaScript in a Web Worker (${colorScheme})`, async ({
+    page,
+    browserName,
+  }, testInfo) => {
+    test.skip(
+      browserName === 'webkit',
+      'Blocked by .toolbar backdrop-filter clipping ContextMenu in WebKit (#927)',
+    );
     await page.emulateMedia({ colorScheme });
     // A fresh context has no saved connection: the start screen, and the
     // sheet behind Connect to a Server….
@@ -58,7 +65,11 @@ for (const colorScheme of ['light', 'dark'] as const) {
   });
 }
 
-test('switching backends ends the kernels in this page', async ({ page }) => {
+test('switching backends ends the kernels in this page', async ({ page, browserName }) => {
+  test.skip(
+    browserName === 'webkit',
+    'WebKit keeps the browser kernel Web Worker alive on backend switch (#945)',
+  );
   await page.goto('/');
   await useThisBrowser(page);
   const backendButton = page.getByRole('button', { name: /This browser/ });

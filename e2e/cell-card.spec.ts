@@ -101,7 +101,7 @@ test('the toolbar’s capsule sits on the card’s top edge and stays put', asyn
   await cell.hover();
   expect(still(await placed())).toBe(true);
   await cell.locator('.cm-content').click();
-  await page.keyboard.type('; 1');
+  await page.keyboard.type('; await new Promise(r => setTimeout(r, 800)); 1');
   await page.keyboard.press('Escape');
   await cell.hover();
   await cell.locator('.gn-run-button').click();

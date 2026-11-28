@@ -94,7 +94,15 @@ test('a server kernel reaches the app through the page', async ({ page }) => {
   expect(methods).toEqual(['hello', 'clipboard.readText']);
 });
 
-test('in a browser the page answers with web APIs, after a click', async ({ page, context }) => {
+test('in a browser the page answers with web APIs, after a click', async ({
+  page,
+  context,
+  browserName,
+}) => {
+  test.skip(
+    browserName === 'webkit',
+    'Playwright WebKit does not support clipboard-read/clipboard-write grantPermissions',
+  );
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: APP_URL });
   await newNotebook(page);
   await run(

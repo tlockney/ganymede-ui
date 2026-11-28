@@ -19,7 +19,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:webkit": "E2E_WEBKIT=1 playwright test"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "6.2.5",

@@ -68,7 +68,9 @@ test('a busy cell’s interrupt says the state is gone, and Restart & Run All re
   // The variable is gone, as the notice says.
   await typeIn(page, 2, 'moon');
   await page.keyboard.press('Shift+Enter');
-  await expect(outputs(page).filter({ hasText: /moon is not defined/ })).toBeVisible();
+  await expect(
+    outputs(page).filter({ hasText: /(moon is not defined|Can't find variable: moon)/ }),
+  ).toBeVisible();
   // The loop is fixed, as a person would before running every cell again.
   await page.locator('.jp-Cell .cm-content').nth(1).click();
   await page.keyboard.press('ControlOrMeta+a');

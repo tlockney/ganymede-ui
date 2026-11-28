@@ -122,7 +122,12 @@ test('one Add cell control, under the active cell and at the end', async ({ page
 
 test('three cells show Add Cell Below under the active cell and Add Cell at End at the end', async ({
   page,
+  browserName,
 }) => {
+  test.skip(
+    browserName === 'webkit',
+    'Blocked by compact touch tap shifting inactive-cell button in WebKit (#928)',
+  );
   await newBrowserNotebook(page);
   const below = page.getByRole('button', { name: 'Add Cell Below', exact: true });
   await below.tap();
@@ -254,7 +259,14 @@ test('a long log shows its tail, and View full log opens it', async ({ page }) =
   expect(scroll).toBeLessThanOrEqual(client);
 });
 
-test('tapping View full log leaves the active cell and the editor alone', async ({ page }) => {
+test('tapping View full log leaves the active cell and the editor alone', async ({
+  page,
+  browserName,
+}) => {
+  test.skip(
+    browserName === 'webkit',
+    'Blocked by compact touch tap shifting inactive-cell button in WebKit (#928)',
+  );
   await newBrowserNotebook(page);
   // The log goes in a second cell, so its toggle is not in the active one's.
   await page.getByRole('button', { name: 'Add Cell Below', exact: true }).tap();
