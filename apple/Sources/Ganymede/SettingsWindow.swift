@@ -259,6 +259,7 @@ private struct CommandLineToolSettings: View {
 /// Keeping Ganymede's bundled server running in the background as a macOS
 /// LaunchAgent (#912). Hidden when this build has no bundled CLI.
 private struct BackgroundServerSettings: View {
+    @Environment(AppModel.self) private var model
     private let bundled = CommandLineTool.bundledTool()
     @State private var controller = BackgroundServerController()
 
@@ -267,7 +268,10 @@ private struct BackgroundServerSettings: View {
             Section {
                 Toggle("Keep Ganymede running in the background", isOn: Binding(
                     get: { controller.isEnabled },
-                    set: { controller.setEnabled($0) }
+                    set: {
+                        controller.setEnabled($0)
+                        model.menuBar.refreshBackgroundStatus()
+                    }
                 ))
                 if let status = controller.statusText {
                     HStack {

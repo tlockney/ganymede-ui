@@ -145,6 +145,10 @@ final class ThisMacChecks {
     /// The remotes whose server the last check verified, by remote id: what
     /// a window's place, its Recents and its ledger read.
     private(set) var servers = ThisMacServers()
+    /// All verified bundled servers found by the last scan (#924), whether
+    /// or not saved as a remote: used by the menu bar to report background
+    /// server status and query running kernels.
+    private(set) var verifiedServers: [ThisMacServer] = []
 
     /// The remotes saved now, and each one's token, read when a check's
     /// answer applies, so a remote added or edited meanwhile is matched as
@@ -242,6 +246,9 @@ final class ThisMacChecks {
     private func apply(_ found: ThisMacScanResult) {
         watchRuntimeDirectory()
         restartMismatched(found.mismatched)
+        if verifiedServers != found.verified {
+            verifiedServers = found.verified
+        }
         let servers = ThisMacServers(scan: found, remotes: remotes(), token: token)
         if servers != self.servers {
             self.servers = servers
@@ -293,6 +300,7 @@ final class ThisMacChecks {
     /// path.
     func stopTrust() {
         if servers != ThisMacServers() { servers = ThisMacServers() }
+        if !verifiedServers.isEmpty { verifiedServers = [] }
         generation += 1
         watchProcesses()
         stopRuntimeWatch()

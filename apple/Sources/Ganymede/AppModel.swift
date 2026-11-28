@@ -78,6 +78,28 @@ final class AppModel {
     }
     #if os(macOS)
     @ObservationIgnored private let thisMacChecks = ThisMacChecks()
+    /// Drives the Mac menu bar extra (#924): background server status and
+    /// running kernels.
+    let menuBar = MenuBarController()
+    /// All verified bundled servers found on this Mac (#924), whether or not
+    /// added as a remote.
+    var verifiedBackgroundServers: [ThisMacServer] { thisMacChecks.verifiedServers }
+    /// The active local server endpoints (embedded server plus any verified
+    /// background server) for the menu bar's running-kernels list (#924).
+    var activeKernelEndpoints: [ServerEndpoint] {
+        var result: [ServerEndpoint] = []
+        var seen: Set<URL> = []
+        if let local = localServer, seen.insert(local.base).inserted {
+            result.append(local)
+        }
+        for server in verifiedBackgroundServers {
+            let endpoint = ServerEndpoint(base: server.url, token: server.token)
+            if seen.insert(endpoint.base).inserted {
+                result.append(endpoint)
+            }
+        }
+        return result
+    }
     /// Whether a window's launch check was made this turn of the main
     /// runloop, so the rest of that turn's windows take its answer (#883).
     @ObservationIgnored private var windowCheckTaken = false
