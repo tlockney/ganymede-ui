@@ -178,8 +178,10 @@ export type PageState = {
   /** The open notebook's server path, or null. */
   path: string | null;
   /**
-   * The open notebook's `metadata.title` when it has one (#867), else null:
-   * what the app's window calls it, where the file's name isn't the title.
+   * The open notebook's display title when it has one (#867, #892): its
+   * `metadata.title`, else its first `#` heading's text; null otherwise,
+   * for the file's name. What the app's window calls it, where the file's
+   * name isn't the title.
    */
   title: string | null;
   dirty: boolean;

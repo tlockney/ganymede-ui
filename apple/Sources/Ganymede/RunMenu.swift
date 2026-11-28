@@ -31,10 +31,58 @@ struct RunMenuItems: View {
 /// would disable the primary action along with its items, so the button
 /// stays enabled with a notebook open and does nothing in the journal view,
 /// which has no cell to run.
+///
+/// On the Mac it is the toolbar's whole run group (#892): Run, its menu's
+/// arrow and Interrupt in one `ControlGroup`, so the system draws one glass
+/// capsule around the three instead of the separate pieces
+/// `ToolbarItemGroup` gave. Run is the toolbar's only orange control, filled
+/// with the app's accent and lettered in `OnAccent`; the arrow and Interrupt
+/// stay neutral. The iPad and iPhone keep the one split button.
 struct RunCellMenu: View {
     var page: PageModel
 
     var body: some View {
+        #if os(macOS)
+        ControlGroup {
+            Button {
+                if page.state.editsCells { page.run("run") }
+            } label: {
+                Label("Run", systemImage: "play.fill")
+                    .labelStyle(.titleAndIcon)
+                    .foregroundStyle(Color("OnAccent"))
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Color("AccentFill"))
+            // Run Cell's words stay for the reader who hears the toolbar,
+            // though the toolbar shows "Run" (#892).
+            .accessibilityLabel("Run Cell")
+            .help("Run the selected cell and select the next (⇧↩)")
+            .disabled(!page.state.hasNotebook)
+
+            Menu {
+                RunMenuItems(page: page)
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+            }
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Run Cell Menu")
+            .help("Run All, Run with Parameters, Clear All Outputs, Restart…")
+            .disabled(!page.state.hasNotebook)
+
+            Button {
+                page.run("interrupt")
+            } label: {
+                Image(systemName: "stop.fill")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Interrupt")
+            .help("Interrupt the kernel (⌘.)")
+            .disabled(!page.state.isBusy)
+        }
+        #else
         Menu {
             RunMenuItems(page: page)
         } label: {
@@ -45,5 +93,6 @@ struct RunCellMenu: View {
         .labelStyle(.titleAndIcon)
         .help("Run the selected cell and select the next (⇧↩)")
         .disabled(!page.state.hasNotebook)
+        #endif
     }
 }

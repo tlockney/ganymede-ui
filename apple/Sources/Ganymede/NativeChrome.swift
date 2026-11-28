@@ -597,20 +597,27 @@ struct ProjectLine: View {
 
 // MARK: - Toolbar
 
-/// The notebook's controls, in the window's toolbar (#812). Not customizable:
-/// a customizable toolbar (`.toolbar(id:)`) joins every window's toolbar
-/// into one AppKit family, and AppKit threw while syncing a new window's
-/// items into the others when a notebook opened from the Finder (#226).
+/// The notebook's controls, in the window's toolbar (#812, #892). Not
+/// customizable: a customizable toolbar (`.toolbar(id:)`) joins every
+/// window's toolbar into one AppKit family, and AppKit threw while syncing a
+/// new window's items into the others when a notebook opened from the Finder
+/// (#226).
 ///
-/// In a fixed order, so no control moves under the pointer: the title, then
-/// the kernel's chip beside it (its dot, the kernel's name, where it runs and
-/// what it is doing; its popover has the file and the kernels to change
-/// to); Trust and Notebook Access, which are there only while they apply;
-/// Notebook | Journal, there while a notebook is open (#819); Run Cell with
-/// its run menu and Interrupt, in one group, always there and enabled while
-/// the kernel is busy; Share; and More. That is eight items, under the ten
-/// a ToolbarContentBuilder takes. New Notebook is File > New Notebook
-/// (⌘N), not a toolbar button (#867).
+/// Three groups at the window's edges, in a fixed order (#892): the title and
+/// the kernel's chip at the leading edge; Trust, Notebook Access and
+/// Notebook | Journal before the run group; and the right group — Share, More
+/// and the inspector's toggle, in one capsule — at the trailing end. A
+/// flexible space after the chip holds the rest to the trailing edge, and the
+/// groups that come and go (Trust, Access, the journal toggle) arrive at the
+/// front of that run, so nothing after them moves when they do, and nothing
+/// moves when Interrupt enables or the title gains its "Edited" line.
+///
+/// Run Cell shares one `ControlGroup` with its menu's arrow and Interrupt
+/// (#892): the system draws one glass capsule around the three instead of
+/// the separate pieces `ToolbarItemGroup` gave. The run group is the toolbar's
+/// only orange control.
+///
+/// New Notebook is File > New Notebook (⌘N), not a toolbar button (#867).
 struct NotebookToolbar: ToolbarContent {
     var page: PageModel
     /// Saved as File > Save saves it, and enabled when that is.
@@ -625,6 +632,15 @@ struct NotebookToolbar: ToolbarContent {
     /// system's (#867); nil for a console or a folder, which keep the
     /// system's title.
     var title: String?
+    /// Whether the window's inspector shows, for the right group's toggle
+    /// (#892); nil where the window has no inspector, so no button.
+    var inspectorShown: Bool?
+    /// Shows or hides the window's inspector (⌥⌘0), from ContentView.
+    var toggleInspector: () -> Void = {}
+    /// Whether the window's terminal panel shows, for More's item (#892).
+    var panelShown = false
+    /// Shows or hides the window's terminal panel (⌃`), from ContentView.
+    var toggleTerminalPanel: () -> Void = {}
 
     var body: some ToolbarContent {
         // The title, and beside it the kernel's own button (#867): a
@@ -667,6 +683,11 @@ struct NotebookToolbar: ToolbarContent {
         ToolbarItem(placement: .navigation) {
             KernelPicker(page: page, panel: panel, place: place, header: header)
         }
+        // The empty middle of the toolbar: what follows sits at the trailing
+        // edge, where the toolbar was otherwise empty (#892). It gives up its
+        // room first when the window narrows, so the leading and trailing
+        // groups stay where they are.
+        ToolbarSpacer(.flexible)
         // Only while the notebook isn't trusted.
         if !page.state.trusted {
             ToolbarItem {
@@ -688,47 +709,58 @@ struct NotebookToolbar: ToolbarContent {
                 JournalViewPicker(page: page)
             }
         }
-        // Run Cell with its run menu, and Interrupt: one group, so the pair
-        // reads as one control and neither drifts from the other (#867).
-        ToolbarItemGroup {
+        // Run Cell, its run menu's arrow and Interrupt, in one capsule
+        // (#892).
+        ToolbarItem {
             RunCellMenu(page: page)
-            Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
-                .labelStyle(.titleAndIcon)
-                .help("Interrupt the kernel (⌘.)")
-                .disabled(!page.state.isBusy)
         }
-        // Download, Export As and Publish, as in the File menu (#620): the
-        // web toolbar that has them is hidden under native chrome.
+        // Share, More and the inspector's toggle, in one capsule (#892).
         ToolbarItem {
-            Menu {
-                Button("Download Notebook…") { page.run("download") }
-                Menu("Export As") {
-                    Button("Markdown…") { page.run("export", arg: "markdown") }
-                    Button("Script…") { page.run("export", arg: "script") }
-                }
-                .disabled(page.state.publish != true)
-                Button("Publish as Web Page…") { page.run("publish") }
-                    .disabled(page.state.publish != true)
-            } label: {
-                Label("Share", systemImage: "square.and.arrow.up")
+            ControlGroup {
+                shareMenu
+                moreMenu
+                inspectorToggle
             }
-            .help("Download, export or publish the notebook")
-            .disabled(!page.state.hasNotebook)
-        }
-        ToolbarItem {
-            moreMenu
         }
     }
 
+    /// Download, Export As and Publish, as in the File menu (#620): the web
+    /// toolbar that has them is hidden under native chrome. Its words stay
+    /// for the reader who hears the toolbar and in its help; the capsule
+    /// shows the icon (#892).
+    private var shareMenu: some View {
+        Menu {
+            Button("Download Notebook…") { page.run("download") }
+            Menu("Export As") {
+                Button("Markdown…") { page.run("export", arg: "markdown") }
+                Button("Script…") { page.run("export", arg: "script") }
+            }
+            .disabled(page.state.publish != true)
+            Button("Publish as Web Page…") { page.run("publish") }
+                .disabled(page.state.publish != true)
+        } label: {
+            Label("Share", systemImage: "square.and.arrow.up")
+        }
+        .labelStyle(.iconOnly)
+        // No second chevron beside the share icon: beside More's it would
+        // read as two menus in one capsule (#892).
+        .menuIndicator(.hidden)
+        .accessibilityLabel("Share")
+        .help("Download, export or publish the notebook")
+        .disabled(!page.state.hasNotebook)
+    }
+
     /// The rest, in a fixed order. The journal toggle (#724) is first: the
-    /// page's own button is under the app's chrome. Everything here is
-    /// also in the menu bar, and Save is ⌘S.
+    /// page's own button is under the app's chrome; then the window's
+    /// terminal panel, whose keyboard shortcut is View › Terminal Panel
+    /// (#892). Everything here is also in the menu bar, and Save is ⌘S.
     private var moreMenu: some View {
         Menu {
             Button { page.run("toggle-journal") } label: {
                 Label(page.state.journalToggleTitle, systemImage: page.state.journalToggleSymbol)
             }
             .disabled(!page.state.hasNotebook)
+            Button(ToolbarMenu.terminalPanelTitle(shown: panelShown)) { toggleTerminalPanel() }
             Divider()
             Button("Insert Code Cell") { page.run("insert-code") }
                 .disabled(!page.state.editsCells)
@@ -745,9 +777,25 @@ struct NotebookToolbar: ToolbarContent {
             Button("Save") { Task { await document.save() } }
                 .disabled(document.file == nil)
         } label: {
-            Label("More", systemImage: "ellipsis.circle")
+            Label("More", systemImage: "ellipsis")
         }
-        .help("View as journal, insert a cell, change its type, save")
+        .labelStyle(.iconOnly)
+        .menuIndicator(.hidden)
+        .accessibilityLabel("More")
+        .help("View as journal, show the terminal panel, insert a cell, change its type, save")
+    }
+
+    /// The window's inspector (#892), here rather than in `ContentView`, so
+    /// the three trailing controls draw in one capsule.
+    @ViewBuilder private var inspectorToggle: some View {
+        if let inspectorShown {
+            Button { toggleInspector() } label: {
+                Label(inspectorShown ? "Hide Inspector" : "Show Inspector", systemImage: "sidebar.right")
+            }
+            .labelStyle(.iconOnly)
+            .accessibilityLabel(inspectorShown ? "Hide Inspector" : "Show Inspector")
+            .help(inspectorShown ? "Hide the inspector (⌥⌘0)" : "Show the inspector (⌥⌘0)")
+        }
     }
 
     private var cellType: Binding<String> {

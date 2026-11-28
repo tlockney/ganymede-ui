@@ -3,6 +3,7 @@ import {
   agentNames,
   chooseView,
   chosenView,
+  displayTitle,
   forgetChosenViews,
   journalHeader,
   moveChosenViews,
@@ -431,6 +432,32 @@ describe('journalHeader', () => {
     expect(notebookTitle({ title: '  ' })).toBeUndefined();
     expect(notebookTitle({ title: 4 })).toBeUndefined();
     expect(notebookTitle(undefined)).toBeUndefined();
+  });
+
+  it('takes a notebook’s display title from its title, else its first H1 (#892)', () => {
+    const cells = [
+      { type: 'markdown', source: '# **Fremont** Bridge\n\nA journal.' },
+      { type: 'code', source: 'bridge = 1' },
+    ];
+    // metadata.title wins, whatever the cells say.
+    expect(displayTitle({ title: 'Io moons' }, cells)).toBe('Io moons');
+    // No title: the first level-1 heading, its markup stripped.
+    expect(displayTitle({}, cells)).toBe('Fremont Bridge');
+    expect(displayTitle(undefined, cells)).toBe('Fremont Bridge');
+    // Only an H2: no display title, so the app falls back to the file.
+    expect(
+      displayTitle({}, [{ type: 'markdown', source: '## Fremont Bridge' }]),
+    ).toBeUndefined();
+    // Neither.
+    expect(displayTitle({}, [])).toBeUndefined();
+    expect(displayTitle({}, [{ type: 'markdown', source: 'Just prose.' }])).toBeUndefined();
+    // The first H1, not a later one, and not one in a code cell.
+    expect(
+      displayTitle({}, [
+        { type: 'markdown', source: '## First\n\n# Second\n\n# Third' },
+        { type: 'code', source: '# comment' },
+      ]),
+    ).toBe('Second');
   });
 
   it('reads a notebook’s language from its kernelspec, else its language info (#867)', () => {

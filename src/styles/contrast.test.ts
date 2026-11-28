@@ -409,4 +409,45 @@ describe('secondary metadata text (#814)', () => {
       }
     });
   }
+
+  /*
+   * The Mac toolbar's colours (#892) are colorsets in the app's asset
+   * catalog, not the stylesheets: the Run button's fill and the text on
+   * it, and the title on the window's surface. They read at AA in both
+   * appearances too, so a change to a colorset fails here.
+   */
+  type ColorSet = {
+    colors?: {
+      appearances?: { appearance: string; value: string }[];
+      color?: { components?: Record<string, string> };
+    }[];
+  };
+  function colorset(name: string, theme: Theme): RGBA {
+    const file = new URL(
+      `../../apple/Resources/macOS/Assets.xcassets/${name}.colorset/Contents.json`,
+      import.meta.url,
+    );
+    const entries = (JSON.parse(readFileSync(file, 'utf8')) as ColorSet).colors ?? [];
+    const dark = entries.find(e =>
+      e.appearances?.some(a => a.appearance === 'luminosity' && a.value === 'dark'),
+    );
+    const light = entries.find(e => !e.appearances?.length);
+    const pick = (theme === 'dark' ? dark : light) ?? light;
+    const c = pick?.color?.components;
+    if (!c) throw new Error(`no ${theme} colour in ${name}.colorset`);
+    return [Number(c.red) * 255, Number(c.green) * 255, Number(c.blue) * 255, 1];
+  }
+
+  for (const theme of themes) {
+    it(`the Mac toolbar's coloursets read at ${AA}:1 in ${theme} (#892)`, () => {
+      const pairs: [fg: string, bg: string][] = [
+        ['OnAccent', 'AccentFill'],
+        ['TitleText', 'WindowBackground'],
+      ];
+      for (const [fg, bg] of pairs) {
+        const ratio = contrast(colorset(fg, theme), colorset(bg, theme));
+        expect(ratio, `${fg} on ${bg} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
+      }
+    });
+  }
 });
