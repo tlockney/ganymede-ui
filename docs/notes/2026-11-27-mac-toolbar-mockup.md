@@ -21,9 +21,11 @@ page's own surface, with a notebook's title in it.
 - The system's `ControlGroup` styles were tried first and neither fit:
   the automatic style draws each child its own glass, and the navigation
   and palette styles join them but drop the Run segment's fill. So the
-  run capsule is drawn by hand — the toolbar's material in a `Capsule` —
-  which is the one place #892's notes allow it. The trailing capsule uses
-  the navigation style's segmented look.
+  run group is one `HStack` inside its `ToolbarItem`, letting the
+  toolbar's own glass draw the capsule once (matching the trailing
+  Share/More/Inspector group in both dark and light mode, where a
+  hand-drawn `.regularMaterial` capsule barely separated from dark navy).
+  The trailing capsule uses the navigation style's segmented look.
 - Notebook windows take the page's surface: a `WindowBackground` colorset
   (light #fbf9f5, dark #181c2f, `--window-bg` in the stylesheet) paints
   the toolbar band, and the hosting `NSWindow`'s `backgroundColor` is set

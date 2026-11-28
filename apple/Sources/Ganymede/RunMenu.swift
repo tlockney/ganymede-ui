@@ -33,24 +33,23 @@ struct RunMenuItems: View {
 /// which has no cell to run.
 ///
 /// On the Mac it is the toolbar's whole run group (#892): an `HStack` of Run,
-/// its menu's arrow and Interrupt over `.regularMaterial` in a `Capsule` — one
-/// capsule drawn by hand, because the system's `ControlGroup` styles either
-/// draw each child its own glass (automatic) or join them but drop Run's
-/// fill (navigation and palette). Its toolbar item hides the system's shared
-/// background, so the capsule isn't drawn twice. Run is the toolbar's only
-/// orange control, filled with the app's accent and lettered in `OnAccent`;
-/// the arrow and Interrupt, both to Run's right, stay neutral. The iPad and
-/// iPhone keep the one split button.
+/// its menu's arrow and Interrupt inside the toolbar item's own glass
+/// capsule — not a `ControlGroup`, because the system's `ControlGroup`
+/// styles either draw each child its own glass (automatic) or join them but
+/// drop Run's fill (navigation and palette). Letting the toolbar draw the
+/// capsule matches the Share/More/Inspector group's glass in both dark and
+/// light mode. Run is the toolbar's only orange control, filled with the
+/// app's accent and lettered in `OnAccent`; the arrow and Interrupt, both to
+/// Run's right, stay neutral. The iPad and iPhone keep the one split button.
 struct RunCellMenu: View {
     var page: PageModel
 
     var body: some View {
         #if os(macOS)
-        // One capsule by hand, not a `ControlGroup`: the system's styles
-        // either draw each child its own glass (automatic) or drop Run's
-        // accent fill (navigation, palette), and #892 wants one capsule with
-        // an orange Run. The material is the toolbar's own, over its
-        // `WindowBackground` band.
+        // One HStack inside the toolbar item's own glass capsule, not a
+        // `ControlGroup`: the system's styles either draw each child its own
+        // glass (automatic) or drop Run's accent fill (navigation, palette),
+        // and #892 wants one capsule with an orange Run.
         HStack(spacing: 0) {
             Button {
                 if page.state.editsCells { page.run("run") }
@@ -60,7 +59,7 @@ struct RunCellMenu: View {
                     .foregroundStyle(Color("OnAccent"))
                     .padding(.horizontal, 9)
                     .padding(.vertical, 4)
-                    .background(Color("AccentFill"), in: RoundedRectangle(cornerRadius: 6))
+                    .background(Color("AccentFill"), in: Capsule())
             }
             .buttonStyle(.plain)
             // Run Cell's words stay for the reader who hears the toolbar,
@@ -100,9 +99,7 @@ struct RunCellMenu: View {
             .help("Interrupt the kernel (⌘.)")
             .disabled(!page.state.isBusy)
         }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 2)
-        .background(.regularMaterial, in: Capsule())
+        .padding(.horizontal, 4)
         #else
         Menu {
             RunMenuItems(page: page)

@@ -725,14 +725,11 @@ struct NotebookToolbar: ToolbarContent {
                 JournalViewPicker(page: page)
             }
         }
-        // Run Cell, its run menu's arrow and Interrupt, in one capsule
-        // (#892).
+        // Run Cell, its run menu's arrow and Interrupt, in one system glass
+        // capsule (#892).
         ToolbarItem(placement: .primaryAction) {
             RunCellMenu(page: page)
         }
-        // The capsule is RunCellMenu's own: hide the toolbar's shared glass
-        // behind this item, so the run group isn't drawn twice (#892).
-        .sharedBackgroundVisibility(.hidden)
         // Share, More and the inspector's toggle, in one capsule (#892):
         // the navigation style is the segmented look that joins them, where
         // the automatic style draws each its own circle.
