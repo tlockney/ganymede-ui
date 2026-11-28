@@ -60,6 +60,8 @@ export type StatusInput = {
   locked: boolean;
   /** Another Ganymede server on this machine owns the notebook (#839). */
   readOnly?: boolean;
+  /** Room save failed or a server recovery copy needs review (#831). */
+  saveAttention?: boolean;
   /** The kernel's spec name, if one is chosen. */
   kernelName?: string;
   /** The kernel's display name, if known. */
@@ -72,10 +74,11 @@ export type StatusInput = {
   pageKernel?: boolean;
 };
 
-/** The save part: Read-only, Saved in this browser, Saved on <host>, Edited, or Locked. */
-export function saveText({ place, dirty, locked, readOnly }: StatusInput): string {
-  if (readOnly) return 'Read-only';
+/** The save part: Saved in this browser, Saved on <host>, Edited, Locked, Save needs attention, or Read-only. */
+export function saveText({ place, dirty, locked, readOnly, saveAttention }: StatusInput): string {
   if (locked) return dirty ? 'Edited · Locked: changed on disk' : 'Locked: changed on disk';
+  if (saveAttention) return dirty ? 'Edited · Save needs attention' : 'Save needs attention';
+  if (readOnly) return 'Read-only';
   return dirty ? 'Edited' : `Saved ${place.saved}`;
 }
 
@@ -86,15 +89,19 @@ export function saveText({ place, dirty, locked, readOnly }: StatusInput): strin
  * out of the two rows the line has.
  */
 export function shortStatusText(input: StatusInput): string {
-  const save = input.readOnly
-    ? 'Read-only'
-    : input.locked
+  const save = input.locked
+    ? input.dirty
+      ? 'Edited · Locked'
+      : 'Locked'
+    : input.saveAttention
       ? input.dirty
-        ? 'Edited · Locked'
-        : 'Locked'
-      : input.dirty
-        ? 'Edited'
-        : 'Saved';
+        ? 'Edited · Attention'
+        : 'Needs attention'
+      : input.readOnly
+        ? 'Read-only'
+        : input.dirty
+          ? 'Edited'
+          : 'Saved';
   const runs = input.place.runs(
     input.missingKernel ? undefined : input.kernelName,
     input.pageKernel,

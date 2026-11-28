@@ -213,6 +213,23 @@ final class HeaderStatusTests: XCTestCase {
         XCTAssertEqual(
             HeaderStatus.make(state: state, savedOn: "This Mac", runsOn: nil)?.full,
             "Edited · Locked: changed on disk · TypeScript · Running")
+        state.locked = false
+        state.dirty = false
+        state.saveAttention = true
+        let attention = HeaderStatus.make(state: state, savedOn: "This Mac", runsOn: "This Mac")
+        XCTAssertEqual(attention?.saveNote, "Save needs attention")
+        XCTAssertEqual(attention?.save, "Save needs attention")
+        XCTAssertEqual(attention?.short, "Needs attention · Runs on This Mac")
+        XCTAssertEqual(attention?.needsAttention, true)
+        state.dirty = true
+        XCTAssertEqual(
+            HeaderStatus.make(state: state, savedOn: "This Mac", runsOn: "This Mac")?.saveNote,
+            "Edited · Save needs attention")
+        XCTAssertEqual(
+            HeaderStatus.make(state: state, savedOn: "This Mac", runsOn: "This Mac")?.short,
+            "Edited · Attention · Runs on This Mac")
+        state.saveAttention = nil
+        state.locked = true
         state.kernelMissing = true
         state.kernelDisplayName = "Python 3"
         XCTAssertEqual(
@@ -247,5 +264,16 @@ final class HeaderStatusTests: XCTestCase {
         XCTAssertEqual(places(.thisDevice, remote, AppKernels.inAppKernelName), "This iPad / This iPad")
         XCTAssertEqual(places(.machine("m1"), remote, "python3"), "mini / mini")
         XCTAssertEqual(AppKernels.inAppKernelName, "cdp-browser")
+    }
+
+    func testSaveAttentionTakesPrecedenceOverReadOnly() {
+        var state = PageState()
+        state.path = "Io.ipynb"
+        state.readOnly = true
+        state.saveAttention = true
+        let status = HeaderStatus.make(state: state, savedOn: "This Mac", runsOn: "This Mac")
+        XCTAssertEqual(status?.saveNote, "Save needs attention")
+        XCTAssertEqual(status?.short, "Needs attention · Runs on This Mac")
+        XCTAssertEqual(status?.needsAttention, true)
     }
 }

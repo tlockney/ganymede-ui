@@ -122,6 +122,7 @@ export const PAGE_COMMANDS = {
   'watch-memory': 'arg',
   'inspect-variables': 'arg',
   'toggle-variable': 'arg',
+  'review-recovery': '',
 } as const;
 
 /** What the app's sidebar searches for (#240): the `search` command's argument. */
@@ -217,6 +218,8 @@ export type PageState = {
    * notebook (#839): the native toolbar disables Run and cell edits.
    */
   readOnly: boolean;
+  /** Room save failed or a server recovery copy needs review (#831). */
+  saveAttention?: boolean;
   trusted: boolean;
   /** Whether Notebook Access works here: a Ganymede server that runs the kernels. */
   hostGrants: boolean;

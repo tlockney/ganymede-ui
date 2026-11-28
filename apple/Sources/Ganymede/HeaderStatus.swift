@@ -23,17 +23,19 @@ struct HeaderStatus: Equatable {
     var kernelMissing: Bool
     /// The kernel's state (`idle`, `busy`, `none`, …).
     var status: String?
+    /// Room save failed or a server recovery copy needs review (#831).
+    var saveAttention: Bool = false
 
-    /// The save part: Saved on <place>, Edited, or Locked.
+    /// The save part: Saved on <place>, Edited, Locked, or Save needs attention.
     var save: String { saveNote ?? "Saved on \(savedOn)" }
 
     /// The save part beside the Mac toolbar's chip (#867): only what
-    /// "Saved on …" doesn't say, as "Edited" or "Locked: changed on disk",
-    /// and nothing while the file is saved. The popover's first line
-    /// (`full`) still has the whole of it.
+    /// "Saved on …" doesn't say, as "Edited", "Locked: changed on disk",
+    /// or "Save needs attention", and nothing while the file is saved.
     var saveNote: String? {
-        if readOnly { return "Read-only" }
         if locked { return dirty ? "Edited · Locked: changed on disk" : "Locked: changed on disk" }
+        if saveAttention { return dirty ? "Edited · Save needs attention" : "Save needs attention" }
+        if readOnly { return "Read-only" }
         return dirty ? "Edited" : nil
     }
 
@@ -149,10 +151,12 @@ struct HeaderStatus: Equatable {
     /// with no kernel, so a long name doesn't push the runs part out.
     var short: String {
         let word: String
-        if readOnly {
-            word = "Read-only"
-        } else if locked {
+        if locked {
             word = dirty ? "Edited · Locked" : "Locked"
+        } else if saveAttention {
+            word = dirty ? "Edited · Attention" : "Needs attention"
+        } else if readOnly {
+            word = "Read-only"
         } else {
             word = dirty ? "Edited" : "Saved"
         }
@@ -160,9 +164,9 @@ struct HeaderStatus: Equatable {
         return parts.compactMap { $0 }.joined(separator: " · ")
     }
 
-    /// Whether the line is drawn as a warning: a missing kernel, or a file
-    /// that changed on disk.
-    var needsAttention: Bool { kernelMissing || locked }
+    /// Whether the line is drawn as a warning: a missing kernel, a file
+    /// that changed on disk, or a save needing attention.
+    var needsAttention: Bool { kernelMissing || locked || saveAttention }
 
     /// The line for the page's state and the window's place; nil when no
     /// notebook is open (a data file or a console has no kernel or save state).
@@ -177,7 +181,8 @@ struct HeaderStatus: Equatable {
             kernel: state.kernelDisplayName,
             language: state.kernelLanguage,
             kernelMissing: state.kernelMissing,
-            status: state.status
+            status: state.status,
+            saveAttention: state.saveAttention ?? false
         )
     }
 

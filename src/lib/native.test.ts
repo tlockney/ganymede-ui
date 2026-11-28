@@ -125,6 +125,7 @@ describe('native', () => {
 
   it('runs find-in-notebook with a query, and clears it with none (#879)', () => {
     expect(PAGE_COMMANDS['find-in-notebook']).toBe('arg');
+    expect(PAGE_COMMANDS['review-recovery']).toBe('');
   });
 
   it('lists running sessions by display name, with the kernel’s state', () => {

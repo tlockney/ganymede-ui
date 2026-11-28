@@ -594,4 +594,16 @@ final class PageStateTests: XCTestCase {
         state.status = "dead"
         XCTAssertEqual(state.outlineSummary, "5 cells · kernel stopped")
     }
+
+    func testDecodesOptionalSaveAttention() {
+        var body: [String: Any] = [
+            "path": "Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",
+            "kernelDisplayName": "TypeScript", "kernelMissing": false, "trusted": true,
+            "cellType": "code", "kernels": [Any](), "backend": NSNull(),
+        ]
+        XCTAssertNil(PageState(body: body)?.saveAttention)
+
+        body["saveAttention"] = true
+        XCTAssertEqual(PageState(body: body)?.saveAttention, true)
+    }
 }

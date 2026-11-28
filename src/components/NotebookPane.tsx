@@ -81,6 +81,17 @@ import {
 import { interruptResetState } from '../lib/state-reset';
 import { type RunStatus, attachRunStatus } from '../lib/run-status';
 import { ProblemNotice } from './ProblemNotice';
+import { RecoveryBanner } from './RecoveryBanner';
+import { RecoverySheet } from './RecoverySheet';
+import {
+  type RecoveryCopyMeta,
+  type RoomSaveState,
+  describeSaveAttention,
+  fetchRecoveryCopyOrRefresh,
+  listRecoveryCopies,
+  readRoomSaveState,
+  watchRoomSaveState,
+} from '../lib/room-recovery';
 import type { KernelPlaces } from '../lib/kernel-place';
 import { useSignals } from '../lib/useSignal';
 import { hasUntrustedOutputs } from '../lib/trust';
@@ -141,6 +152,12 @@ export type NotebookController = {
    * no save writes until {@link reload} or {@link unlock} (#367).
    */
   locked: boolean;
+  /** Room save failed or a server recovery copy needs review (#831). */
+  saveAttention?: boolean;
+  /** Reason the save needs attention (`save_error` or copy reason), when known. */
+  saveAttentionDetail?: string;
+  /** Open the recovery copies review sheet when server recovery copies exist (#831). */
+  reviewRecovery?: () => void;
   /**
    * The notebook is read-only because another Ganymede server on this machine
    * owns it (#839): editing and running are off until the other server lets go.
@@ -602,6 +619,16 @@ export function NotebookPane({
   const [joined, setJoined] = useState(false);
   /** Set once the file is deleted from under the notebook: no save may put it back. */
   const gone = useRef(false);
+  const [roomClosedState, setRoomClosedState] = useState(false);
+  const [saveState, setSaveState] = useState<RoomSaveState>({});
+  const [recoveryCopies, setRecoveryCopies] = useState<RecoveryCopyMeta[]>();
+  const [recoverySupported, setRecoverySupported] = useState(true);
+  const recoverySupportedRef = useRef(true);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recoverySaving, setRecoverySaving] = useState(false);
+  const [goneRecoveryIds, setGoneRecoveryIds] = useState<string[]>([]);
+  const verifiedStaleIds = useRef(new Set<string>());
+  const lastRecoverySyncRef = useRef<{ open: Open; summaryId?: string }>(undefined);
   /** A rename in progress: the pane's teardown waits for it to move the session. */
   const renaming = useRef<{ done: Promise<void>; to: string }>(undefined);
   /** Why the edits typed during a rename weren't saved: shown when the file reopens. */
@@ -682,6 +709,7 @@ export function NotebookPane({
                 }
                 // Deleted or refused: nothing saves it any more.
                 gone.current = true;
+                setRoomClosedState(true);
                 setNotice(roomClosed(basename(path), why));
               },
             }).catch((e: unknown) => {
@@ -992,6 +1020,7 @@ export function NotebookPane({
       };
       // A file deleted under an earlier open of this pane is back (Reload).
       gone.current = false;
+      setRoomClosedState(false);
       // A notebook an agent kept opens as a journal; a person's as a notebook.
       // The person's choice for this file holds across reopens (a Reload, a
       // restarted server); the default is only for the first open.
@@ -1521,6 +1550,99 @@ export function NotebookPane({
     };
   }, [open, services]);
 
+  // Track room save failures and recovery copies (ganymede PR #960, #831).
+  useEffect(() => {
+    const room = open?.room;
+    verifiedStaleIds.current.clear();
+    lastRecoverySyncRef.current = undefined;
+    recoverySupportedRef.current = true;
+    setGoneRecoveryIds([]);
+    setRecoveryOpen(false);
+    if (!room) {
+      setSaveState({});
+      setRecoveryCopies(undefined);
+      setRecoverySupported(true);
+      return;
+    }
+    return watchRoomSaveState(room.notebook, setSaveState);
+  }, [open]);
+
+  useEffect(() => {
+    const room = open?.room;
+    const settings = services.serverSettings;
+    if (!open || !room || !settings || !recoverySupportedRef.current) return;
+    const summaryId = saveState.recovery?.id ?? readRoomSaveState(room.notebook).recovery?.id;
+    if (
+      lastRecoverySyncRef.current?.open === open &&
+      lastRecoverySyncRef.current.summaryId === summaryId
+    ) {
+      return;
+    }
+    lastRecoverySyncRef.current = { open, summaryId };
+    let cancelled = false;
+    const roomPath = open.saver.path;
+    void listRecoveryCopies(settings, roomPath).then(async res => {
+      if (cancelled) return;
+      if (res.kind === 'unsupported') {
+        recoverySupportedRef.current = false;
+        setRecoverySupported(false);
+        setRecoveryCopies([]);
+        return;
+      }
+      if (res.kind !== 'copies') return;
+      setRecoverySupported(true);
+      setRecoveryCopies(res.copies);
+      if (
+        summaryId &&
+        !res.copies.some(c => c.id === summaryId) &&
+        !verifiedStaleIds.current.has(summaryId)
+      ) {
+        verifiedStaleIds.current.add(summaryId);
+        const resolved = await fetchRecoveryCopyOrRefresh(settings, roomPath, summaryId);
+        if (cancelled) return;
+        if (resolved.kind === 'gone') {
+          setGoneRecoveryIds(prev => (prev.includes(summaryId) ? prev : [...prev, summaryId]));
+          if (resolved.list.kind === 'copies') {
+            setRecoveryCopies(resolved.list.copies);
+          } else if (resolved.list.kind === 'unsupported') {
+            recoverySupportedRef.current = false;
+            setRecoverySupported(false);
+            setRecoveryCopies([]);
+          }
+        }
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, services.serverSettings, saveState.recovery?.id]);
+
+  const visibleSaveState: RoomSaveState =
+    saveState.recovery && goneRecoveryIds.includes(saveState.recovery.id)
+      ? { ...saveState, recovery: undefined }
+      : saveState;
+  const attentionState: RoomSaveState = recoverySupported
+    ? visibleSaveState
+    : {
+        ...(visibleSaveState.save ? { save: visibleSaveState.save } : {}),
+        ...(visibleSaveState.saveError ? { saveError: visibleSaveState.saveError } : {}),
+      };
+  const saveAttention = open?.room
+    ? describeSaveAttention({
+        saveState: attentionState,
+        copies: recoverySupported ? recoveryCopies : undefined,
+      })
+    : undefined;
+  const hasSaveAttention = Boolean(saveAttention);
+  const saveAttentionDetail = saveAttention?.detail;
+  const canReviewRecovery = Boolean(
+    open?.room &&
+    services.serverSettings &&
+    recoverySupported &&
+    ((recoveryCopies?.length ?? 0) > 0 || Boolean(visibleSaveState.recovery)),
+  );
+  const openRecovery = useCallback(() => setRecoveryOpen(true), []);
+
   // Notice a change on disk without waiting for a save (#367): every few
   // seconds while the page shows, and when it comes back. Another writer
   // (an agent editing through the server, say) is caught before any edit
@@ -1773,6 +1895,9 @@ export function NotebookPane({
       },
       locked: isLocked,
       readOnly,
+      saveAttention: hasSaveAttention,
+      saveAttentionDetail,
+      reviewRecovery: canReviewRecovery ? openRecovery : undefined,
       save: async () => {
         // Deleted or owned by another server: nothing saves here.
         if (gone.current || readOnlyRef.current) return false;
@@ -2020,6 +2145,10 @@ export function NotebookPane({
     trusted,
     isLocked,
     readOnly,
+    hasSaveAttention,
+    saveAttentionDetail,
+    canReviewRecovery,
+    openRecovery,
     lock,
     cellType,
     activeCell,
@@ -2234,17 +2363,39 @@ export function NotebookPane({
   }
   return (
     <>
-      {roomOffline && machineName ? (
-        <div className="machine-banner" role="status">
-          {machineName} went offline · Reconnecting…
+      {((roomOffline && machineName) || (readOnly && !journal) || saveAttention) && (
+        <div className="pane-top-banners">
+          {roomOffline && machineName ? (
+            <div className="machine-banner" role="status">
+              {machineName} went offline · Reconnecting…
+            </div>
+          ) : (
+            readOnly &&
+            !journal && (
+              <div className="readonly-banner" role="status">
+                {READONLY_BANNER}
+              </div>
+            )
+          )}
+          {saveAttention && (
+            <RecoveryBanner
+              attention={saveAttention}
+              saving={recoverySaving}
+              canRetrySave={
+                !readOnly && !roomClosedState && visibleSaveState.recovery?.reason !== 'file_gone'
+              }
+              canReview={canReviewRecovery}
+              onReview={openRecovery}
+              onRetrySave={() => {
+                const save = controllerRef.current?.save;
+                if (!save) return;
+                setRecoverySaving(true);
+                void save().finally(() => setRecoverySaving(false));
+              }}
+              onDownload={() => controllerRef.current?.download()}
+            />
+          )}
         </div>
-      ) : (
-        readOnly &&
-        !journal && (
-          <div className="readonly-banner" role="status">
-            {READONLY_BANNER}
-          </div>
-        )
       )}
       {/* The Apple apps draw no toolbar, so the page says what the notebook
        * is above its first cell, as the toolbar's eyebrow does (#867). */}
@@ -2306,6 +2457,37 @@ export function NotebookPane({
               notice.retry();
             }
           }}
+        />
+      )}
+      {recoveryOpen && services.serverSettings && (
+        <RecoverySheet
+          path={open.saver.path}
+          name={basename(open.saver.path)}
+          settings={services.serverSettings}
+          contents={services.contents}
+          initialSummary={visibleSaveState.recovery}
+          currentNotebook={open.model.toJSON() as nbformat.INotebookContent}
+          hasUnsavedEdits={dirty}
+          roomClosed={roomClosedState}
+          onCopiesChanged={copies => {
+            setRecoveryCopies(copies);
+            if (copies.length === 0 && saveState.recovery) {
+              const id = saveState.recovery.id;
+              setGoneRecoveryIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+            }
+          }}
+          onRestored={() => {
+            clearNotice('save-conflict', 'save-failed');
+            locked.current = undefined;
+            lockedAt.current = undefined;
+            setLocked(false);
+            if (roomClosedState) {
+              reloading.current = true;
+              setOpen(undefined);
+              setAttempt(a => a + 1);
+            }
+          }}
+          onClose={() => setRecoveryOpen(false)}
         />
       )}
     </>

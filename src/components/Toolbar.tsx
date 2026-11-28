@@ -131,6 +131,7 @@ export function Toolbar({
     dirty: c.dirty,
     locked: c.locked,
     readOnly: c.readOnly,
+    saveAttention: c.saveAttention,
     kernelName: c.kernelName,
     kernelDisplay,
     missingKernel: c.missingKernel,
@@ -143,7 +144,24 @@ export function Toolbar({
     status: {
       label: 'Notebook and Kernel',
       items: [
-        ...(c ? [{ heading: 'File' }, { note: c.path }] : []),
+        ...(c
+          ? [
+              { heading: 'File' },
+              { note: c.path },
+              ...(c.saveAttention
+                ? [
+                    {
+                      note: c.saveAttentionDetail
+                        ? `Save needs attention: ${c.saveAttentionDetail}`
+                        : 'Save needs attention',
+                    },
+                    ...(c.reviewRecovery
+                      ? [{ label: 'Review Recovery Copies…', onSelect: c.reviewRecovery }]
+                      : []),
+                  ]
+                : []),
+            ]
+          : []),
         ...(c && specs
           ? [
               { heading: 'Kernel' },
@@ -339,7 +357,7 @@ export function Toolbar({
           {c && (
             <button
               type="button"
-              className={`status-line${c.locked ? ' locked' : ''}`}
+              className={`status-line${c.locked || c.saveAttention ? ' locked' : ''}`}
               aria-label={status}
               title={status}
               {...popup('status')}

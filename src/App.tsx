@@ -837,6 +837,10 @@ export function App() {
     switch (id) {
       case 'save':
         return c.save();
+      case 'review-recovery':
+        if (!c.reviewRecovery) return false;
+        c.reviewRecovery();
+        return true;
       case 'download':
         c.download();
         return true;
@@ -1094,6 +1098,7 @@ export function App() {
       kernelMissing: !!shown?.missingKernel,
       locked: shown?.locked ?? false,
       readOnly: shown?.readOnly ?? false,
+      saveAttention: shown?.saveAttention ?? false,
       trusted: shown?.trusted ?? true,
       hostGrants,
       publish: publishAvailable(backend),
