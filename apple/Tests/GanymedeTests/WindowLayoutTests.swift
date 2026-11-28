@@ -1,4 +1,8 @@
+import SwiftUI
 import XCTest
+#if os(macOS)
+import AppKit
+#endif
 
 final class WindowLayoutTests: XCTestCase {
     func testFillsAndRestores() {
@@ -49,4 +53,87 @@ final class WindowLayoutTests: XCTestCase {
         layout.noteChange(of: .inspector, shown: true)
         XCTAssertNil(layout.filled)
     }
+
+    func testFillWindowOwnsCmdShiftReturnWithoutCellRunAllCollision() {
+        let fillWindowShortcut = KeyboardShortcut(.return, modifiers: [.command, .shift])
+        XCTAssertEqual(MacCommandShortcuts.fillWindow, fillWindowShortcut)
+        XCTAssertNil(
+            MacCommandShortcuts.runAllCells,
+            "Cell › Run All Cells must not claim ⇧⌘↩ on Mac, which shadows View › Fill Window"
+        )
+    }
+
+    #if os(macOS)
+    @MainActor
+    func testMainMenuDispatchesCmdShiftReturnToFillWindowNotRunAllCells() throws {
+        final class Target: NSObject {
+            var fillWindowCount = 0
+            var runAllCount = 0
+            @objc func fillWindow(_: Any?) { fillWindowCount += 1 }
+            @objc func runAll(_: Any?) { runAllCount += 1 }
+        }
+
+        func makeItem(_ title: String, target: AnyObject, action: Selector, shortcut: KeyboardShortcut?) -> NSMenuItem {
+            let item = NSMenuItem(
+                title: title,
+                action: action,
+                keyEquivalent: shortcut.map { String($0.key.character) } ?? ""
+            )
+            item.target = target
+            if let modifiers = shortcut?.modifiers {
+                var flags: NSEvent.ModifierFlags = []
+                if modifiers.contains(.command) { flags.insert(.command) }
+                if modifiers.contains(.shift) { flags.insert(.shift) }
+                if modifiers.contains(.option) { flags.insert(.option) }
+                if modifiers.contains(.control) { flags.insert(.control) }
+                item.keyEquivalentModifierMask = flags
+            }
+            return item
+        }
+
+        let target = Target()
+        let mainMenu = NSMenu(title: "MainMenu")
+
+        // Cell sits alongside View in the Mac menu bar; if both claim ⇧⌘↩,
+        // the earlier menu item intercepts View › Fill Window.
+        let cellItem = NSMenuItem(title: "Cell", action: nil, keyEquivalent: "")
+        let cellMenu = NSMenu(title: "Cell")
+        cellMenu.addItem(makeItem(
+            "Run All Cells",
+            target: target,
+            action: #selector(Target.runAll(_:)),
+            shortcut: MacCommandShortcuts.runAllCells
+        ))
+        cellItem.submenu = cellMenu
+        mainMenu.addItem(cellItem)
+
+        let viewItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
+        let viewMenu = NSMenu(title: "View")
+        viewMenu.addItem(makeItem(
+            "Fill Window",
+            target: target,
+            action: #selector(Target.fillWindow(_:)),
+            shortcut: MacCommandShortcuts.fillWindow
+        ))
+        viewItem.submenu = viewMenu
+        mainMenu.addItem(viewItem)
+
+        let event = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command, .shift],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "\r",
+            charactersIgnoringModifiers: "\r",
+            isARepeat: false,
+            keyCode: 36
+        ))
+
+        XCTAssertTrue(mainMenu.performKeyEquivalent(with: event))
+        XCTAssertEqual(target.fillWindowCount, 1)
+        XCTAssertEqual(target.runAllCount, 0)
+    }
+    #endif
 }

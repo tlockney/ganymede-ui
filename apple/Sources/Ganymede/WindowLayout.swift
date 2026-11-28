@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// An area of a Mac notebook window that can fill it (#250).
 enum WindowArea: String, CaseIterable {
@@ -43,4 +44,15 @@ struct WindowLayout: Equatable {
     func folds(_ area: WindowArea) -> Bool {
         filled != nil && filled != area
     }
+}
+
+/// Keyboard shortcuts for Mac main-menu commands whose ownership must not
+/// collide (#885).
+enum MacCommandShortcuts {
+    /// View › Fill Window / Restore Layout (#250).
+    static let fillWindow = KeyboardShortcut(.return, modifiers: [.command, .shift])
+
+    /// Cell › Run All Cells (#207, #885): `nil` on Mac so View › Fill Window
+    /// keeps exclusive ownership of `⇧⌘↩`.
+    static let runAllCells: KeyboardShortcut? = nil
 }

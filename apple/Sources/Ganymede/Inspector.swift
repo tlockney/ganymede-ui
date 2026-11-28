@@ -226,7 +226,7 @@ struct FillCommands: View {
 
     var body: some View {
         Button(fill?.filled == nil ? "Fill Window" : "Restore Layout") { fill?.toggle() }
-            .keyboardShortcut(.return, modifiers: [.command, .shift])
+            .keyboardShortcut(MacCommandShortcuts.fillWindow)
             .disabled(fill == nil)
     }
 }

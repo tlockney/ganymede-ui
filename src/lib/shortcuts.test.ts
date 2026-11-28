@@ -121,3 +121,33 @@ describe('customized shortcuts', () => {
     expect(keys()).toEqual([]);
   });
 });
+
+describe('Mac keybinding precedence (#885)', () => {
+  it('leaves Shift+Cmd+Enter unbound on Mac so Fill Window keeps precedence', async () => {
+    const { Platform } = await import('@lumino/domutils');
+    const wasMac = Platform.IS_MAC;
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
+    Reflect.set(Platform, 'IS_MAC', true);
+    vi.resetModules();
+    try {
+      const macShortcuts = await import('./shortcuts');
+      const { CommandRegistry: MacCommandRegistry } = await import('@lumino/commands');
+      const cmdShiftEnter = key({
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        shiftKey: true,
+        metaKey: true,
+      });
+      expect(macShortcuts.IS_MAC).toBe(true);
+      expect(MacCommandRegistry.keystrokeForKeydownEvent(cmdShiftEnter)).toBe('Shift Cmd Enter');
+      for (const s of macShortcuts.SHORTCUTS) {
+        expect(macShortcuts.matches(cmdShiftEnter, s.id), s.id).toBe(false);
+      }
+    } finally {
+      Reflect.set(Platform, 'IS_MAC', wasMac);
+      vi.restoreAllMocks();
+      vi.resetModules();
+    }
+  });
+});
