@@ -970,13 +970,22 @@ describe('App', () => {
   });
 
   it('turns the live Markdown preview on and off from the app, and remembers it (#672)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
     localStorage.removeItem('ganymede-ui:live-markdown');
     render(<App />);
     await waitFor(() => expect(window.ganymede).toBeDefined());
+    await waitFor(() => expect(states.at(-1)?.liveMarkdown).toBe(false));
     expect(await window.ganymede!.command('toggle-live-markdown')).toBe(true);
     expect(localStorage.getItem('ganymede-ui:live-markdown')).toBe('on');
+    await waitFor(() => expect(states.at(-1)?.liveMarkdown).toBe(true));
     expect(await window.ganymede!.command('toggle-live-markdown')).toBe(true);
     expect(localStorage.getItem('ganymede-ui:live-markdown')).toBeNull();
+    await waitFor(() => expect(states.at(-1)?.liveMarkdown).toBe(false));
   });
 
   it('turns Wrap Code on and off from the app, and remembers it (#813)', async () => {

@@ -1233,6 +1233,19 @@ struct JournalCommand: View {
     }
 }
 
+/// View › Show/Hide Live Markdown Preview (#673): turns live Markdown
+/// preview on or off across Markdown cells.
+struct LiveMarkdownCommand: View {
+    @FocusedValue(\.pageModel) private var page
+
+    var body: some View {
+        Button(page?.state.liveMarkdownToggleTitle ?? "Show Live Markdown Preview") {
+            page?.run("toggle-live-markdown")
+        }
+        .disabled(page == nil)
+    }
+}
+
 /// View › Command Palette… (⇧⌘P): the page's palette of every command (#211).
 /// The menu key is fixed: rebinding the palette on the page doesn't change it.
 struct CommandPaletteCommand: View {

@@ -95,6 +95,7 @@ describe('native', () => {
       cellCount: 14,
       ranCellCount: 12,
       journal: false,
+      liveMarkdown: false,
       kernels: [{ name: 'cdp', displayName: 'TypeScript', device: false }],
       kernelsRemote: null,
       backend: { label: 'Ganymede', detail: 'local server' },

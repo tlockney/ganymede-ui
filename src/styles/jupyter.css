@@ -1242,7 +1242,17 @@
 .notebook-page .cm-md-live .cm-md-quote {
   border-left: 3px solid var(--separator);
   color: var(--text-2);
-  padding-left: 0.75em;
+  padding-left: calc(0.75em * var(--cm-md-quote-depth, 1));
+}
+
+.notebook-page .cm-md-live .cm-md-li {
+  padding-left: calc(6px + var(--cm-md-indent, 0em));
+  text-indent: calc(-1 * var(--cm-md-hang, 0em));
+}
+
+.notebook-page .cm-md-live .cm-md-quote.cm-md-li {
+  padding-left: calc(0.75em * var(--cm-md-quote-depth, 1) + var(--cm-md-indent, 0em));
+  text-indent: calc(-1 * var(--cm-md-hang, 0em));
 }
 
 .notebook-page .cm-md-live .cm-md-bullet {
@@ -1251,10 +1261,144 @@
   text-align: center;
 }
 
+.notebook-page .cm-md-live .cm-md-order {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.notebook-page .cm-md-live .cm-md-task {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-right: 0.15em;
+}
+
+.notebook-page .cm-md-live .cm-md-checkbox {
+  margin: 0;
+  width: 0.95em;
+  height: 0.95em;
+  accent-color: var(--accent-text);
+  cursor: pointer;
+}
+
+.notebook-page .cm-md-live .cm-md-task-done {
+  color: var(--text-2);
+  text-decoration: line-through;
+}
+
 .notebook-page .cm-md-live .cm-md-rule {
   display: block;
   border-top: 1px solid var(--separator);
   margin: 0.6em 0;
+}
+
+.notebook-page .cm-md-live .cm-md-table-wrap {
+  padding: 0.45em 0;
+  overflow-x: auto;
+}
+
+.notebook-page .cm-md-live .cm-md-table {
+  border-collapse: collapse;
+  max-width: 100%;
+  font-size: 0.95em;
+}
+
+.notebook-page .cm-md-live .cm-md-table :is(th, td) {
+  border: 1px solid var(--cell-border);
+  padding: 0.35em 0.65em;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  vertical-align: top;
+}
+
+.notebook-page .cm-md-live .cm-md-table th {
+  color: var(--heading);
+  font-weight: 600;
+  background: var(--control-bg);
+}
+
+.notebook-page .cm-md-live .cm-md-table tr:hover td {
+  background: var(--control-bg);
+}
+
+.notebook-page .cm-md-live .cm-md-math-display {
+  display: block;
+  padding: 0.35em 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.notebook-page .cm-md-live .cm-md-math-inline {
+  display: inline-block;
+  vertical-align: baseline;
+}
+
+.notebook-page .cm-md-live .cm-md-math-pending,
+.notebook-page .cm-md-live .cm-md-math-fallback {
+  font-family: var(--jp-code-font-family);
+  font-size: 0.92em;
+  color: var(--text-2);
+}
+
+.notebook-page .cm-md-live .cm-md-image {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 100%;
+}
+
+.notebook-page .cm-md-live .cm-md-image-img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.notebook-page .cm-md-live .cm-md-image-fallback {
+  font-family: var(--jp-code-font-family);
+  font-size: 0.88em;
+  color: var(--text-2);
+  background: var(--control-bg);
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+}
+
+.notebook-page .cm-md-live .cm-md-u {
+  text-decoration: underline;
+}
+
+.notebook-page .cm-md-live .cm-md-mark {
+  background: var(--control-bg);
+  border-radius: 3px;
+  padding: 0 0.15em;
+}
+
+.notebook-page .cm-md-live .cm-md-sub {
+  vertical-align: sub;
+  font-size: 0.8em;
+}
+
+.notebook-page .cm-md-live .cm-md-sup {
+  vertical-align: super;
+  font-size: 0.8em;
+}
+
+.notebook-page .cm-md-live .cm-md-kbd {
+  font-family: var(--jp-code-font-family);
+  font-size: 0.85em;
+  background: var(--control-bg);
+  border: 1px solid var(--cell-border);
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+}
+
+.notebook-page .cm-md-live .cm-md-small {
+  font-size: 0.88em;
+}
+
+.notebook-page .cm-md-live .cm-md-html,
+.notebook-page .cm-md-live .cm-md-comment {
+  color: var(--text-2);
+  font-family: var(--jp-code-font-family);
+  font-size: 0.9em;
 }
 
 /* A JupyterLab dialog's message is a <pre>, one line however long: it

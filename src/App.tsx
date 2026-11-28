@@ -92,7 +92,11 @@ import {
   useRecents,
 } from './lib/recents';
 import { paletteEntries } from './lib/palette';
-import { liveMarkdownEnabled, setLiveMarkdownEnabled } from './lib/markdown-preview';
+import {
+  liveMarkdownEnabled,
+  onLiveMarkdownChange,
+  setLiveMarkdownEnabled,
+} from './lib/markdown-preview';
 import { setWrapCodeEnabled, wrapCodeEnabled } from './lib/wrap-code';
 import { setTypeErrorsEnabled, typeErrorsEnabled } from './lib/type-errors';
 import { CommandPalette } from './components/CommandPalette';
@@ -145,6 +149,8 @@ export function App() {
   const [launch] = useState<Launch>(() => readLaunch(window.location.search));
   // The Apple apps draw the sidebar, toolbar and menus themselves (#205).
   const [native] = useState(() => nativeChrome());
+  const [liveMarkdown, setLiveMarkdown] = useState(liveMarkdownEnabled);
+  useEffect(() => onLiveMarkdownChange(setLiveMarkdown), []);
   // On the root, so the sheets (outside the window) lose the toolbar's offset too.
   useEffect(() => {
     document.documentElement.classList.toggle('chrome-native', native);
@@ -1196,6 +1202,7 @@ export function App() {
       cellCount: shown?.cellCount ?? 0,
       ranCellCount: shown?.ranCellCount ?? 0,
       journal: shown?.journal ?? false,
+      liveMarkdown,
       kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
         k
           ? [
@@ -1246,6 +1253,7 @@ export function App() {
     accessKey,
     hostGrants,
     findQuery,
+    liveMarkdown,
   ]);
 
   // ⌘S / Ctrl+S saves, as in any document app; ⇧⌘P opens the command

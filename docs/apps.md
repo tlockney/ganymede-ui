@@ -1447,30 +1447,39 @@ TypeScript.
 
 ## Live Markdown preview
 
-A Markdown cell can render as you type, the way Obsidian's live preview
-does, in the Mac, iPad and iPhone apps and in the browser. Headings,
-bold and italic, strikethrough, inline code, links, bullet lists, block
-quotes, fenced code and horizontal rules show as they will read, with the
-Markdown that makes them hidden. The line or element the cursor or
-selection is in shows its raw Markdown again, so you can edit it:
+> [!NOTE]
+> **Unreleased.**
 
-- bold, italic, strikethrough, inline code and links show raw while the
-  cursor is in them or touches them;
-- a heading, a list item, a quote line or a rule shows raw while the
+A Markdown cell can render as you type, the way Obsidian's live preview
+does, in the Mac, iPad and iPhone apps and in the browser. Headings
+(including setext underlines), bold and italic, strikethrough, inline
+code, links, autolinks and bare URLs, inline images, bullet and ordered
+lists, task-list checkboxes, block quotes (with hanging indents for
+wrapped list and quote lines), fenced code (with language syntax
+highlighting), tables, MathJax math (`$…$` and `$$…$$`), safe inline HTML
+and horizontal rules show as they will read, with the Markdown that makes
+them hidden. The line, element or block the cursor or selection is in
+shows its raw Markdown again, so you can edit it:
+
+- bold, italic, strikethrough, inline code, links, autolinks, inline
+  images, inline HTML and inline `$…$` math show raw while the cursor
+  touches them;
+- a heading, list item, task box, quote line or rule shows raw while the
   cursor is on its line;
-- a fenced code block shows its fences while the cursor is on any line of it.
+- a fenced code block, table or display `$$…$$` math block shows raw
+  while the cursor touches any line of it.
 
 The text of the cell doesn't change, so undo, copy, selection and saving
 work on the Markdown as written. Running the cell gives the full render,
-as before. Tables, math, images, task-list boxes and HTML stay raw for
-now, and code in a fenced block isn't highlighted by its language yet.
-The prose follows the Markdown font in Settings, code the code font, and
-it follows dark mode.
+as before. Inline images resolve `attachment:` images from the cell and
+relative paths from the notebook, while blocking unsafe URL schemes such
+as `javascript:` or SVG `data:` URIs. The prose follows the Markdown font
+in Settings, code the code font, and it follows dark mode.
 
 This is an experiment, off by default. **Show or Hide Live Markdown
-Preview** in the Command Palette turns it on or off for every Markdown
-cell; the app remembers the choice, and other windows of the app follow
-it. There is no View menu item for it yet.
+Preview** in the Command Palette and **View › Show/Hide Live Markdown
+Preview** in the Mac app turn it on or off for every Markdown cell; the
+app remembers the choice, and other windows of the app follow it.
 
 ## Journal view
 

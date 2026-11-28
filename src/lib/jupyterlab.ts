@@ -11,6 +11,7 @@
  * toolbar extensions would: Tab completion and Shift+Tab inspection from the
  * kernel, find in notebook, and the active cell's toolbar.
  */
+import { LanguageDescription } from '@codemirror/language';
 import { fillColor } from '@jupyter/web-components';
 import type { IYText } from '@jupyter/ydoc';
 import type { ISessionContext } from '@jupyterlab/apputils';
@@ -87,11 +88,18 @@ import '@jupyterlab/documentsearch/style/index.js';
 import '@jupyterlab/cell-toolbar/style/index.js';
 
 import { createEditorExtensions, editorLanguages, editorThemes } from './editor-setup';
-import { liveMarkdownPreview } from './markdown-preview';
+import { liveMarkdownPreview, liveMarkdownResolver } from './markdown-preview';
 import { wrapCode } from './wrap-code';
 
 const languages = editorLanguages;
 const themes = editorThemes;
+
+const latexTypesetter = new MathJaxTypesetter();
+
+const findCodeLanguage = (info: string): LanguageDescription | null => {
+  const found = languages.findBest(info, false);
+  return found instanceof LanguageDescription ? found : null;
+};
 
 const extensions = createEditorExtensions(registry => {
   // Bind each editor to its cell's shared model, as JupyterLab's
@@ -106,14 +114,39 @@ const extensions = createEditorExtensions(registry => {
     },
   });
 
-  // Live Markdown preview (#672): only Markdown cells' editors, and only while
+  // Live Markdown preview (#672, #673): only Markdown cells' editors, and only while
   // its switch is on (the extension itself follows the switch).
   registry.addExtension({
     name: 'live-markdown-preview',
-    factory: options =>
-      (options.model.sharedModel as { cell_type?: string }).cell_type === 'markdown'
-        ? EditorExtensionRegistry.createImmutableExtension(liveMarkdownPreview())
-        : null,
+    factory: options => {
+      const shared = options.model.sharedModel as {
+        cell_type?: string;
+        getAttachments?: () => unknown;
+        changed?: {
+          connect: (fn: (_sender: unknown, args: { attachmentsChange?: unknown }) => void) => void;
+          disconnect: (
+            fn: (_sender: unknown, args: { attachmentsChange?: unknown }) => void,
+          ) => void;
+        };
+      };
+      if (shared.cell_type !== 'markdown') return null;
+      return EditorExtensionRegistry.createImmutableExtension(
+        liveMarkdownPreview({
+          codeLanguages: findCodeLanguage,
+          latexTypesetter,
+          attachments: () => shared.getAttachments?.(),
+          onAttachmentsChange: listener => {
+            const slot = shared.changed;
+            if (!slot) return () => {};
+            const onChange = (_: unknown, args: { attachmentsChange?: unknown }) => {
+              if (args.attachmentsChange) listener();
+            };
+            slot.connect(onChange);
+            return () => slot.disconnect(onChange);
+          },
+        }),
+      );
+    },
   });
 
   // Wrap Code (#813): every editor follows the switch.
@@ -143,7 +176,7 @@ const mimeExtensions: IRenderMime.IExtension[] = [javascriptExtension, jsonExten
 const baseRendermime = new RenderMimeRegistry({
   initialFactories: standardRendererFactories,
   markdownParser: createMarkdownParser(languages),
-  latexTypesetter: new MathJaxTypesetter(),
+  latexTypesetter,
 });
 for (const extension of mimeExtensions) {
   baseRendermime.addFactory(extension.rendererFactory, extension.rank);
@@ -198,10 +231,19 @@ export class GanymedeNotebook extends Notebook {
 
 /** A notebook widget with no model yet, with an id safe in selectors. */
 export function createNotebook(rendermime: IRenderMimeRegistry): GanymedeNotebook {
+  const resolverExt = rendermime.resolver ? liveMarkdownResolver.of(rendermime.resolver) : null;
+  const baseFactory = editorServices.factory.newInlineEditor;
   const notebook = new GanymedeNotebook({
     rendermime,
     contentFactory: new NotebookPanel.ContentFactory({
-      editorFactory: editorServices.factory.newInlineEditor,
+      editorFactory: options =>
+        resolverExt &&
+        (options.model.sharedModel as { cell_type?: string }).cell_type === 'markdown'
+          ? baseFactory({
+              ...options,
+              extensions: [...(options.extensions ?? []), resolverExt],
+            })
+          : baseFactory(options),
     }),
     mimeTypeService: editorServices.mimeTypes,
     notebookConfig: {
